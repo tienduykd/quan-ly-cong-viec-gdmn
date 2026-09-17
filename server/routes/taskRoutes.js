@@ -7,6 +7,7 @@ const db = require('../db');
 const { authMiddleware } = require('../auth');
 const { notifyTaskEvent } = require('../cron');
 const zaloPersonalService = require('../zaloPersonalService');
+const { getHonorific, formatDateDMY } = require('../formatHelper');
 
 // Configure multer file upload
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -215,6 +216,8 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
 
     // Notify assignee if not assigning to self
     if (targetAssigneeId !== user.id && !isPersonalNum) {
+      const assignedUser = db.prepare('SELECT gender FROM users WHERE id = ?').get(targetAssigneeId);
+      const userHonorific = getHonorific(assignedUser?.gender);
       db.prepare(`
         INSERT INTO notifications (user_id, task_id, title, message, type)
         VALUES (?, ?, ?, ?, 'task_assigned')
@@ -222,7 +225,7 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
         targetAssigneeId,
         taskId,
         'Bạn được giao công việc mới',
-        `${user.full_name} đã giao cho Thầy/Cô công việc "${title}" (Hạn chót: ${due_date}).`
+        `${user.full_name} đã giao cho ${userHonorific} công việc "${title}" (Hạn chót: ${formatDateDMY(due_date)}).`
       );
     }
 
@@ -253,7 +256,7 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
         taskId,
         'Giao việc mới',
         user.full_name,
-        `Đã tạo và phân công công việc "${title}". Hạn chót: ${due_date}.`
+        `Đã tạo và phân công công việc "${title}". Hạn chót: ${formatDateDMY(due_date)}.`
       );
     }
 
@@ -645,7 +648,7 @@ router.post('/:id/transfer', authMiddleware, (req, res) => {
     task.assigner_id,
     taskId,
     'Đề xuất chuyển giao người xử lý',
-    `${user.full_name} đề xuất chuyển công việc "${task.title}" cho Thầy/Cô ${targetUser.full_name}. Lý do: ${reason.trim()}`
+    `${user.full_name} đề xuất chuyển công việc "${task.title}" cho ${getHonorific(targetUser.gender)} ${targetUser.full_name}. Lý do: ${reason.trim()}`
   );
 
   notifyTaskEvent(
@@ -691,8 +694,8 @@ router.post('/:id/transfer/:requestId/review', authMiddleware, (req, res) => {
     WHERE id = ?
   `).run(status, review_note || '', user.id, requestId);
 
-  const oldAssignee = db.prepare('SELECT full_name FROM users WHERE id = ?').get(transferReq.requester_id);
-  const newAssignee = db.prepare('SELECT full_name FROM users WHERE id = ?').get(transferReq.target_user_id);
+  const oldAssignee = db.prepare('SELECT full_name, gender FROM users WHERE id = ?').get(transferReq.requester_id);
+  const newAssignee = db.prepare('SELECT full_name, gender FROM users WHERE id = ?').get(transferReq.target_user_id);
 
   if (status === 'approved') {
     // Update task assignee
@@ -717,7 +720,7 @@ router.post('/:id/transfer/:requestId/review', authMiddleware, (req, res) => {
       transferReq.requester_id,
       taskId,
       'Đề xuất chuyển giao được phê duyệt',
-      `Đề xuất chuyển công việc "${task.title}" sang Thầy/Cô ${newAssignee.full_name} đã được ${user.full_name} chấp thuận.`
+      `Đề xuất chuyển công việc "${task.title}" sang ${getHonorific(newAssignee?.gender)} ${newAssignee.full_name} đã được ${user.full_name} chấp thuận.`
     );
 
     // Notify new assignee
@@ -728,7 +731,7 @@ router.post('/:id/transfer/:requestId/review', authMiddleware, (req, res) => {
       transferReq.target_user_id,
       taskId,
       'Tiếp nhận công việc được chuyển giao',
-      `Thầy/Cô đã được chuyển giao phụ trách chính công việc "${task.title}" từ Thầy/Cô ${oldAssignee.full_name}.`
+      `${getHonorific(newAssignee?.gender)} đã được chuyển giao phụ trách chính công việc "${task.title}" từ ${getHonorific(oldAssignee?.gender)} ${oldAssignee.full_name}.`
     );
 
     notifyTaskEvent(
@@ -838,7 +841,7 @@ router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
     }
 
     const phone = (assignee.zalo_phone || assignee.phone || '').trim();
-    const honorific = assignee.gender === 'male' ? 'Thầy' : (assignee.gender === 'female' ? 'Cô' : 'Thầy/Cô');
+    const honorific = getHonorific(assignee.gender);
 
     if (!phone) {
       return res.status(400).json({
@@ -872,7 +875,7 @@ Trân trọng cảm ơn {danh_xung}!`;
       .replace(/{ho_ten}/g, assignee.full_name)
       .replace(/{nguoi_gui}/g, user.full_name)
       .replace(/{ten_cong_viec}/g, task.title)
-      .replace(/{han_chot}/g, task.due_date || 'Chưa định')
+      .replace(/{han_chot}/g, formatDateDMY(task.due_date))
       .replace(/{muc_uu_tien}/g, prioText)
       .replace(/{tien_do}/g, (task.progress || 0).toString());
 

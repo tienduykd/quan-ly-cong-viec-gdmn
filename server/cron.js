@@ -3,6 +3,7 @@ const axios = require('axios');
 const db = require('./db');
 const { postToWebhook } = require('./webhookHelper');
 const zaloPersonalService = require('./zaloPersonalService');
+const { getHonorific, formatDateDMY } = require('./formatHelper');
 
 // Function to generate and send daily digest
 async function sendDailyDigest(triggerType = 'cron') {
@@ -41,13 +42,14 @@ async function sendDailyDigest(triggerType = 'cron') {
     `);
 
     dueTodayTasks.forEach(t => {
-      const taskObj = db.prepare('SELECT assignee_id FROM tasks WHERE id = ?').get(t.id);
+      const taskObj = db.prepare('SELECT t.assignee_id, u.gender FROM tasks t JOIN users u ON t.assignee_id = u.id WHERE t.id = ?').get(t.id);
       if (taskObj) {
+        const h = getHonorific(taskObj.gender);
         insertNoti.run(
           taskObj.assignee_id,
           t.id,
           'Nhắc việc: Hôm nay đến hạn công việc',
-          `Công việc "${t.title}" của Thầy/Cô đến hạn hoàn thành hôm nay (${today}). Vui lòng cập nhật tiến độ!`,
+          `Công việc "${t.title}" của ${h} đến hạn hoàn thành hôm nay (${formatDateDMY(today)}). Vui lòng cập nhật tiến độ!`,
           'daily_reminder'
         );
       }
@@ -97,10 +99,10 @@ async function sendDailyDigest(triggerType = 'cron') {
           const targetPhone = user.phone ? user.phone.trim() : null;
           if (!targetPhone) continue; // Only send if phone exists
 
-          const honorific = user.gender === 'male' ? 'Thầy' : (user.gender === 'female' ? 'Cô' : 'Thầy/Cô');
+          const honorific = getHonorific(user.gender);
           let personalMsg = `⏰ [NHẮC VIỆC HÔM NAY - NGÀNH GDMN]\n`;
           personalMsg += `Kính gửi ${honorific} ${user.full_name},\n`;
-          personalMsg += `Sáng nay (${new Date().toLocaleDateString('vi-VN')}), ${honorific} có công việc cần hoàn thành/theo dõi:\n`;
+          personalMsg += `Sáng nay (${formatDateDMY(today)}), ${honorific} có công việc cần hoàn thành/theo dõi:\n`;
           personalMsg += `------------------------------------\n`;
 
           if (dueToday.length > 0) {
@@ -114,7 +116,7 @@ async function sendDailyDigest(triggerType = 'cron') {
           if (overdue.length > 0) {
             personalMsg += `⚠️ CÔNG VIỆC ĐÃ QUÁ HẠN (${overdue.length}):\n`;
             overdue.forEach((t, i) => {
-              personalMsg += `${i + 1}. ❗ ${t.title} (Hạn chót: ${t.due_date} | Tiến độ: ${t.progress}%)\n`;
+              personalMsg += `${i + 1}. ❗ ${t.title} (Hạn chót: ${formatDateDMY(t.due_date)} | Tiến độ: ${t.progress}%)\n`;
             });
           }
 
@@ -155,7 +157,7 @@ async function sendDailyDigest(triggerType = 'cron') {
 Kính nhờ Quý Thầy/Cô kiểm tra và cập nhật tiến độ công việc trên hệ thống: https://tienduykd.github.io/quan-ly-cong-viec-gdmn
 Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
 
-      const todayStr = new Date().toLocaleDateString('vi-VN');
+      const todayStr = formatDateDMY(today);
       let dueListText = '(Không có công việc đến hạn)';
       if (dueTodayTasks.length > 0) {
         dueListText = dueTodayTasks.map((t, i) => {
@@ -167,7 +169,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
       let overdueListText = '(Không có công việc quá hạn)';
       if (overdueTasks.length > 0) {
         overdueListText = overdueTasks.map((t, i) => {
-          return `${i + 1}. ❗ ${t.title} (Hạn: ${t.due_date})\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%`;
+          return `${i + 1}. ❗ ${t.title} (Hạn: ${formatDateDMY(t.due_date)})\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%`;
         }).join('\n');
       }
 

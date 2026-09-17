@@ -337,17 +337,18 @@ export default function ZaloView({ currentUser }) {
       .replace(/{ho_ten}/g, name)
       .replace(/{nguoi_gui}/g, sender)
       .replace(/{ten_cong_viec}/g, 'Báo cáo kiểm định chất lượng CTĐT Giáo dục Mầm non')
-      .replace(/{han_chot}/g, '25/09/2026')
+      .replace(/{han_chot}/g, '25-09-2026')
       .replace(/{muc_uu_tien}/g, '🔴 KHẨN CẤP')
       .replace(/{tien_do}/g, '45');
   };
 
   const getGroupPreview = () => {
-    const today = new Date().toLocaleDateString('vi-VN');
+    const today = new Date();
+    const todayStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
     const dueSample = `1. [🔴 KHẨN CẤP] Rà soát đề cương HK1\n   👤 Phụ trách: Thầy Nguyễn Công Trường | Tiến độ: 60%\n2. [🟠 Cao] Kế hoạch thực tập SP mầm non\n   👤 Phụ trách: Cô Huỳnh Thị Thúy Diễm | Tiến độ: 80%`;
-    const overdueSample = `1. ❗ Báo cáo tự đánh giá TC 3 (Hạn: 15/09/2026)\n   👤 Phụ trách: Cô Lê Thanh Huyền | Tiến độ: 50%`;
+    const overdueSample = `1. ❗ Báo cáo tự đánh giá TC 3 (Hạn: 15-09-2026)\n   👤 Phụ trách: Cô Lê Thanh Huyền | Tiến độ: 50%`;
     return (groupTemplate || '')
-      .replace(/{ngay}/g, today)
+      .replace(/{ngay}/g, todayStr)
       .replace(/{so_viec_hom_nay}/g, '2')
       .replace(/{danh_sach_viec_hom_nay}/g, dueSample)
       .replace(/{so_viec_qua_han}/g, '1')

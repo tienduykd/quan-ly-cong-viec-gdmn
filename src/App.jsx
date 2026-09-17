@@ -39,6 +39,15 @@ export default function App() {
     }
   }, []);
 
+  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.username === 'dangutphuong');
+
+  // Guard against non-admin accessing setup tabs
+  useEffect(() => {
+    if (currentUser && !isAdmin && (activeTab === 'users' || activeTab === 'zalo')) {
+      setActiveTab('tasks');
+    }
+  }, [currentUser, isAdmin, activeTab]);
+
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
   };
@@ -107,14 +116,14 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'users' && (
+        {isAdmin && activeTab === 'users' && (
           <UsersView
             key={`users-${refreshKey}`}
             currentUser={currentUser}
           />
         )}
 
-        {activeTab === 'zalo' && (
+        {isAdmin && activeTab === 'zalo' && (
           <ZaloView
             key={`zalo-${refreshKey}`}
             currentUser={currentUser}

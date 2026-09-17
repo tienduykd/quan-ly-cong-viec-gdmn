@@ -83,9 +83,11 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
   const navItems = [
     { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
     { id: 'tasks', label: 'Công việc', icon: CheckSquare },
-    { id: 'stats', label: 'Thống kê & KPI', icon: BarChart3 },
-    { id: 'users', label: 'Nhân sự (21)', icon: Users },
-    { id: 'zalo', label: 'Nhắc việc Zalo', icon: MessageSquare, badge: 'Auto' },
+    { id: 'stats', label: 'Báo cáo & KPI', icon: BarChart3 },
+    ...(isAdmin ? [
+      { id: 'users', label: 'Nhân sự (21)', icon: Users },
+      { id: 'zalo', label: 'Cấu hình Zalo', icon: MessageSquare, badge: 'Admin' },
+    ] : [])
   ];
 
   return (

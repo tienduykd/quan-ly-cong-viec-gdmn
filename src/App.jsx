@@ -10,6 +10,7 @@ import TasksView from './views/TasksView';
 import StatsView from './views/StatsView';
 import UsersView from './views/UsersView';
 import ZaloView from './views/ZaloView';
+import SupabaseView from './views/SupabaseView';
 
 import { getAuthToken, getStoredUser, setAuthToken, setStoredUser, apiRequest } from './api';
 
@@ -124,6 +125,12 @@ export default function App() {
 
         {isAdmin && activeTab === 'zalo' && (
           <ZaloView
+            currentUser={currentUser}
+          />
+        )}
+
+        {isAdmin && activeTab === 'supabase' && (
+          <SupabaseView
             currentUser={currentUser}
           />
         )}

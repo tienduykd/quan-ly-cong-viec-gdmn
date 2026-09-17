@@ -261,6 +261,12 @@ class ZaloPersonalService {
             fs.writeFileSync(SESSION_FILE, dataStr, 'utf8');
             db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_session', dataStr);
             console.log('[ZALO-PERSONAL] Đã lưu thông tin phiên vào File và SQLite DB.');
+
+            // Sync to Supabase Cloud immediately
+            try {
+              const supabaseService = require('./supabaseService');
+              supabaseService.scheduleAutoSync(1000);
+            } catch (e) {}
           } catch (err) {
             console.error('[ZALO-PERSONAL] Lỗi ghi file/db session:', err.message);
           }
@@ -276,6 +282,12 @@ class ZaloPersonalService {
         try {
           await this.loadAccountInfo();
           await this.loadGroups();
+
+          // Push to Supabase Cloud so Zalo session is preserved permanently
+          try {
+            const supabaseService = require('./supabaseService');
+            supabaseService.pushToSupabase().catch(e => console.error('[SUPABASE-SYNC-ZALO]', e.message));
+          } catch (e) {}
         } catch (e) {
           console.error('[ZALO-PERSONAL] Lỗi sau khi đăng nhập:', e.message);
         }
@@ -306,6 +318,13 @@ class ZaloPersonalService {
     try {
       db.prepare("DELETE FROM settings WHERE key IN ('zalo_personal_session', 'zalo_personal_user_info', 'zalo_personal_groups')").run();
     } catch (e) {}
+
+    // Sync removal to Supabase Cloud
+    try {
+      const supabaseService = require('./supabaseService');
+      supabaseService.pushToSupabase().catch(e => {});
+    } catch (e) {}
+
     return { success: true };
   }
 

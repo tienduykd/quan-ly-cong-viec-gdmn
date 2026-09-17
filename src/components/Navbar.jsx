@@ -13,7 +13,8 @@ import {
   Shield,
   Check,
   ChevronDown,
-  Database
+  Database,
+  Cloud
 } from 'lucide-react';
 import { apiRequest, formatVietnamDateTime } from '../api';
 
@@ -142,18 +143,18 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
                 <button
                   onClick={() => setShowAdminDropdown(!showAdminDropdown)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition shadow-xs ${
-                    activeTab === 'users' || activeTab === 'zalo'
+                    activeTab === 'users' || activeTab === 'zalo' || activeTab === 'supabase'
                       ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-2 ring-teal-600/20'
                       : 'text-slate-700 hover:text-teal-700 hover:bg-teal-50/70 bg-slate-50 border border-slate-200/80'
                   }`}
                 >
-                  <Shield className={`w-4 h-4 ${activeTab === 'users' || activeTab === 'zalo' ? 'text-white' : 'text-teal-600'}`} />
+                  <Shield className={`w-4 h-4 ${activeTab === 'users' || activeTab === 'zalo' || activeTab === 'supabase' ? 'text-white' : 'text-teal-600'}`} />
                   <span>Quản trị</span>
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAdminDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {showAdminDropdown && (
-                  <div className="absolute right-0 sm:left-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 p-1.5 z-50 animate-in fade-in zoom-in duration-150">
+                  <div className="absolute right-0 sm:left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-1.5 z-50 animate-in fade-in zoom-in duration-150">
                     <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       Quản trị hệ thống
                     </div>
@@ -189,7 +190,25 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
                       </div>
                       <div>
                         <p className="font-bold">Cấu hình Zalo</p>
-                        <p className="text-[10px] font-normal text-slate-400">Kết nối Bot & Nhắc việc</p>
+                        <p className="text-[10px] font-normal text-slate-400">Kết nối Bot & Mẫu tin nhắn</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('supabase');
+                        setShowAdminDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 text-xs font-bold flex items-center gap-2.5 transition rounded-xl ${
+                        activeTab === 'supabase' ? 'bg-teal-50 text-teal-800 font-extrabold' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                        <Cloud className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold">Lưu trữ Cloud (Supabase)</p>
+                        <p className="text-[10px] font-normal text-slate-400">Đồng bộ CSDL & Giữ phiên Zalo</p>
                       </div>
                     </button>
                   </div>
@@ -379,6 +398,15 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
               >
                 <MessageSquare className="w-3.5 h-3.5" />
                 <span>Cấu hình Zalo</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('supabase')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                  activeTab === 'supabase' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Lưu Cloud</span>
               </button>
             </>
           )}

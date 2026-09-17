@@ -2,21 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-
-// Ensure db initialization
-require('./db');
-
-const { startCronJobs } = require('./cron');
-const { startKeepAlive } = require('./keepAlive');
-const authRoutes = require('./routes/authRoutes');
-const taskRoutes = require('./routes/taskRoutes');
-const userRoutes = require('./routes/userRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const statsRoutes = require('./routes/statsRoutes');
-const zaloRoutes = require('./routes/zaloRoutes');
-const zaloPersonalRoutes = require('./routes/zaloPersonalRoutes');
-const zaloPersonalService = require('./zaloPersonalService');
-const supabaseRoutes = require('./routes/supabaseRoutes');
 const supabaseService = require('./supabaseService');
 
 const app = express();
@@ -48,16 +33,6 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/stats', statsRoutes);
-app.use('/api/zalo', zaloRoutes);
-app.use('/api/zalo-personal', zaloPersonalRoutes);
-app.use('/api/supabase', supabaseRoutes);
-
 // Health check & Anti-Sleep Ping
 app.get(['/ping', '/api/ping', '/api/health'], (req, res) => {
   res.json({
@@ -68,43 +43,87 @@ app.get(['/ping', '/api/ping', '/api/health'], (req, res) => {
   });
 });
 
-// Serve frontend dist if exists
-const distPath = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.use((req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-}
+async function startServer() {
+  // 1. Initialize Supabase Sync Service
+  supabaseService.init();
 
-// Initialize Supabase Sync Service
-const db = require('./db');
-supabaseService.init(db);
-
-(async () => {
-  try {
-    const pulled = await supabaseService.pullFromSupabase();
-    if (pulled) {
-      console.log('[SERVER] Đã đồng bộ khôi phục dữ liệu mới nhất từ Supabase Cloud.');
+  // 2. If Supabase is configured, pull latest DB & Zalo session BEFORE opening DB!
+  if (supabaseService.client) {
+    try {
+      console.log('[SERVER] Đang kiểm tra và tải CSDL mới nhất từ Supabase Cloud...');
+      const pulled = await supabaseService.pullFromSupabase();
+      if (pulled) {
+        console.log('[SERVER] Đã đồng bộ khôi phục dữ liệu mới nhất từ Supabase Cloud thành công!');
+      }
+    } catch (err) {
+      console.error('[SUPABASE] Khởi động khôi phục thất bại:', err.message);
     }
-  } catch (err) {
-    console.error('[SUPABASE] Khởi động khôi phục thất bại:', err.message);
   }
 
-  // Start background cron scheduler (07:30 daily reminders)
+  // 3. Initialize DB module (opens freshly pulled SQLite file)
+  const db = require('./db');
+  if (!supabaseService.client) {
+    supabaseService.init(db);
+    if (supabaseService.client) {
+      try {
+        const pulled = await supabaseService.pullFromSupabase();
+        if (pulled) {
+          db.reopen();
+        }
+      } catch (err) {}
+    }
+  }
+
+  // 4. Load routes
+  const authRoutes = require('./routes/authRoutes');
+  const taskRoutes = require('./routes/taskRoutes');
+  const userRoutes = require('./routes/userRoutes');
+  const notificationRoutes = require('./routes/notificationRoutes');
+  const statsRoutes = require('./routes/statsRoutes');
+  const zaloRoutes = require('./routes/zaloRoutes');
+  const zaloPersonalRoutes = require('./routes/zaloPersonalRoutes');
+  const supabaseRoutes = require('./routes/supabaseRoutes');
+
+  app.use('/api/auth', authRoutes);
+  app.use('/api/tasks', taskRoutes);
+  app.use('/api/users', userRoutes);
+  app.use('/api/notifications', notificationRoutes);
+  app.use('/api/stats', statsRoutes);
+  app.use('/api/zalo', zaloRoutes);
+  app.use('/api/zalo-personal', zaloPersonalRoutes);
+  app.use('/api/supabase', supabaseRoutes);
+
+  // Serve frontend dist if exists
+  const distPath = path.join(__dirname, '..', 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.use((req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  // 5. Start background cron scheduler (07:30 daily reminders)
+  const { startCronJobs } = require('./cron');
   startCronJobs();
 
-  // Start anti-sleep keep alive worker for cloud deployment
+  // 6. Start anti-sleep keep alive worker for cloud deployment
+  const { startKeepAlive } = require('./keepAlive');
   startKeepAlive();
 
-  // Initialize personal Zalo bot session if saved (run AFTER pulling session from Supabase)
+  // 7. Initialize personal Zalo bot session (run AFTER pulling session from Supabase)
+  const zaloPersonalService = require('./zaloPersonalService');
   try {
     await zaloPersonalService.init();
     console.log('[ZALO-PERSONAL] Khởi tạo phiên Zalo xong. Trạng thái:', zaloPersonalService.status);
   } catch (err) {
     console.error('[ZALO-PERSONAL] Khởi tạo thất bại:', err.message);
   }
-})();
+
+  // 8. Start HTTP server
+  app.listen(PORT, () => {
+    console.log(`[SERVER] Hệ thống Quản lý công việc GDMN đang chạy tại http://localhost:${PORT}`);
+  });
+}
 
 // Graceful shutdown: flush changes to Supabase before process exits
 const gracefulShutdown = async () => {
@@ -117,7 +136,4 @@ const gracefulShutdown = async () => {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-// Listen
-app.listen(PORT, () => {
-  console.log(`[SERVER] Hệ thống Quản lý công việc GDMN đang chạy tại http://localhost:${PORT}`);
-});
+startServer();

@@ -14,10 +14,32 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 const dbPath = path.join(dataDir, 'quanlycongviec.sqlite');
-const db = new Database(dbPath);
+let dbInstance = new Database(dbPath);
+dbInstance.pragma('foreign_keys = ON');
 
-// Enable foreign keys
-db.pragma('foreign_keys = ON');
+function reopenDb() {
+  try {
+    if (dbInstance) dbInstance.close();
+  } catch (e) {}
+  dbInstance = new Database(dbPath);
+  dbInstance.pragma('foreign_keys = ON');
+  initDb();
+  console.log('[DB] Đã tải lại kết nối SQLite thành công!');
+  return dbInstance;
+}
+
+// Global proxy so any route can keep using require('./db') even after reopen
+const db = new Proxy({}, {
+  get(target, prop) {
+    if (prop === 'reopen') return reopenDb;
+    if (prop === 'getInstance') return () => dbInstance;
+    const val = dbInstance[prop];
+    if (typeof val === 'function') {
+      return val.bind(dbInstance);
+    }
+    return val;
+  }
+});
 
 function initDb() {
   // 1. Departments table
@@ -269,6 +291,23 @@ function seedData() {
       );
     });
     console.log('Successfully seeded 21 users for GDMN program!');
+  }
+
+  // Luôn đảm bảo tài khoản giảng viên Lê Duy tồn tại trong CSDL
+  try {
+    const leDuy = db.prepare('SELECT id FROM users WHERE username = ? OR full_name LIKE ?').get('leduy', '%Lê Duy%');
+    if (!leDuy) {
+      const saltRounds = 10;
+      const hash = bcrypt.hashSync('leduy123', saltRounds);
+      const dept = db.prepare('SELECT id FROM departments LIMIT 1').get();
+      db.prepare(`
+        INSERT INTO users (username, password_hash, full_name, role, gender, department_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run('leduy', hash, 'Lê Duy', 'lecturer', 'Nam', dept ? dept.id : null);
+      console.log('[DB] Đã khởi tạo thành công tài khoản giảng viên Lê Duy!');
+    }
+  } catch (e) {
+    console.error('[DB] Lỗi kiểm tra tài khoản Lê Duy:', e.message);
   }
 
   // Seed default settings

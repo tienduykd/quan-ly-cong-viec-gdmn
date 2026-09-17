@@ -21,15 +21,26 @@ class SupabaseService {
   }
 
   init(dbInstance = null) {
-    if (!this.url || !this.key) {
-      if (dbInstance) {
-        try {
-          const urlRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_url');
-          if (urlRow && urlRow.value) this.url = urlRow.value;
-          const keyRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_key');
-          if (keyRow && keyRow.value) this.key = keyRow.value;
-        } catch (e) {}
-      }
+    if (!this.url) this.url = process.env.SUPABASE_URL || '';
+    if (!this.key) this.key = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+    // Check config file if exists
+    const configPath = path.join(__dirname, '..', 'data', 'supabase_config.json');
+    if ((!this.url || !this.key) && fs.existsSync(configPath)) {
+      try {
+        const conf = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (conf.url && !this.url) this.url = conf.url;
+        if (conf.key && !this.key) this.key = conf.key;
+      } catch (e) {}
+    }
+
+    if ((!this.url || !this.key) && dbInstance) {
+      try {
+        const urlRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_url');
+        if (urlRow && urlRow.value) this.url = urlRow.value;
+        const keyRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_key');
+        if (keyRow && keyRow.value) this.key = keyRow.value;
+      } catch (e) {}
     }
 
     if (this.url && this.key) {
@@ -178,6 +189,12 @@ class SupabaseService {
       let uploadErrors = [];
 
       if (fs.existsSync(DB_FILE)) {
+        // Flush SQLite WAL transactions to database file before upload
+        try {
+          const db = require('./db');
+          db.pragma('wal_checkpoint(TRUNCATE)');
+        } catch (e) {}
+
         const dbBuffer = fs.readFileSync(DB_FILE);
         const { error: dbErr } = await this.client.storage.from(BUCKET_NAME).upload('quanlycongviec.sqlite', dbBuffer, {
           upsert: true,
@@ -237,6 +254,12 @@ class SupabaseService {
   async saveConfig(url, key, dbInstance = null) {
     this.url = (url || '').trim();
     this.key = (key || '').trim();
+
+    // Save to local config file
+    try {
+      const configPath = path.join(__dirname, '..', 'data', 'supabase_config.json');
+      fs.writeFileSync(configPath, JSON.stringify({ url: this.url, key: this.key }, null, 2), 'utf8');
+    } catch (e) {}
 
     if (dbInstance) {
       try {

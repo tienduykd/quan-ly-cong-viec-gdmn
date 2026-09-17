@@ -80,26 +80,50 @@ class SupabaseService {
       const client = createClient(url, key, { auth: { persistSession: false } });
 
       let bucketFound = false;
+      let createBucketErr = null;
+
       // 1. Try listing buckets (works with service_role key)
       try {
-        const { data: buckets, error } = await client.storage.listBuckets();
-        if (!error && buckets) {
+        const { data: buckets, error: listBucketsErr } = await client.storage.listBuckets();
+        if (!listBucketsErr && buckets) {
           bucketFound = buckets.some(b => b.name === BUCKET_NAME);
           if (!bucketFound) {
             const { error: createErr } = await client.storage.createBucket(BUCKET_NAME, { public: false });
-            if (!createErr) bucketFound = true;
+            if (!createErr) {
+              bucketFound = true;
+            } else {
+              createBucketErr = createErr.message;
+            }
           }
+        } else if (listBucketsErr) {
+          createBucketErr = listBucketsErr.message;
         }
-      } catch (e) {}
+      } catch (e) {
+        createBucketErr = e.message;
+      }
 
       // 2. Direct check on bucket BUCKET_NAME
       const { data: files, error: listErr } = await client.storage.from(BUCKET_NAME).list('', { limit: 1 });
       if (listErr) {
-        if (listErr.message?.toLowerCase().includes('not found')) {
+        const isNotFound = listErr.message?.toLowerCase().includes('not found') || listErr.statusCode === 404 || listErr.statusCode === '404';
+        if (isNotFound) {
           try {
-            await client.storage.createBucket(BUCKET_NAME, { public: false });
-            bucketFound = true;
-          } catch (e) {}
+            const { error: cErr } = await client.storage.createBucket(BUCKET_NAME, { public: false });
+            if (!cErr) {
+              bucketFound = true;
+            } else {
+              createBucketErr = cErr.message;
+            }
+          } catch (e) {
+            createBucketErr = e.message;
+          }
+
+          if (!bucketFound) {
+            return {
+              success: false,
+              error: `Chưa có bucket "${BUCKET_NAME}" trên Supabase và không thể tự động tạo (${createBucketErr || listErr.message}). Vui lòng vào Supabase Dashboard > mục Storage > bấm "New bucket" > đặt tên là "${BUCKET_NAME}" (hoặc dùng khóa service_role bí mật).`
+            };
+          }
         } else {
           return {
             success: false,
@@ -112,8 +136,8 @@ class SupabaseService {
 
       return {
         success: true,
-        message: 'Kết nối tới Supabase Storage thành công!',
-        bucketFound: !!bucketFound,
+        message: `Kết nối tới Supabase Storage thành công! Bucket "${BUCKET_NAME}" đã sẵn sàng.`,
+        bucketFound: true,
         bucketName: BUCKET_NAME
       };
     } catch (err) {
@@ -202,7 +226,12 @@ class SupabaseService {
         });
         if (dbErr) {
           console.error('[SUPABASE] Lỗi upload DB:', dbErr.message);
-          uploadErrors.push(`Lỗi lưu CSDL: ${dbErr.message}`);
+          const isNotFound = dbErr.message?.toLowerCase().includes('not found') || dbErr.statusCode === 404 || dbErr.statusCode === '404';
+          if (isNotFound) {
+            uploadErrors.push(`Chưa có bucket "${BUCKET_NAME}" trên Supabase. Vui lòng vào Supabase Dashboard > mục Storage > bấm "New bucket" > đặt tên là "${BUCKET_NAME}" rồi bấm lưu lại`);
+          } else {
+            uploadErrors.push(`Lỗi lưu CSDL: ${dbErr.message}`);
+          }
         } else {
           console.log('[SUPABASE] Đã sao lưu quanlycongviec.sqlite lên Supabase thành công!');
         }

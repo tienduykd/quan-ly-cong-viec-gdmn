@@ -355,10 +355,13 @@ export default function SupabaseView({ currentUser }) {
               Chờ khoảng 1-2 phút để Supabase khởi tạo xong.
             </li>
             <li>
-              Vào biểu tượng bánh răng <strong>Project Settings</strong> (ở góc dưới bên trái) &gt; chọn mục <strong>API</strong>.
+              Vào biểu tượng <strong>Storage</strong> (ở thanh menu bên trái) &gt; bấm nút <strong>"New bucket"</strong> &gt; gõ tên: <code className="font-bold text-emerald-800">gdmn-database</code> &gt; bấm <strong>Save</strong>.
             </li>
             <li>
-              Sao chép <strong>Project URL</strong> và khóa <strong>service_role (Secret key)</strong> rồi dán vào 2 ô bên cạnh và bấm <strong>Lưu cấu hình & Kích hoạt</strong>.
+              Vào biểu tượng bánh răng <strong>Project Settings</strong> (góc dưới bên trái) &gt; chọn mục <strong>API</strong>.
+            </li>
+            <li>
+              Sao chép <strong>Project URL</strong> và khóa <strong>service_role (Secret key)</strong> (nhấn <em>Reveal</em> để hiện khóa bí mật, không dùng khóa anon) rồi dán vào 2 ô bên cạnh và bấm <strong>Lưu cấu hình & Kích hoạt</strong>.
             </li>
           </ol>
 

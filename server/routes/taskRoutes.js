@@ -853,16 +853,28 @@ router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
     }
 
     const prioText = task.priority === 'urgent' ? '🔴 KHẨN CẤP' : (task.priority === 'high' ? '🟠 Cao' : '🔵 Bình thường');
-    const reminderMsg = `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
-Kính gửi ${honorific} ${assignee.full_name},
-${user.full_name} xin gửi lời nhắc về công việc:
-📋 Tên công việc: ${task.title}
-⏳ Hạn hoàn thành: ${task.due_date || 'Chưa định'}
-📊 Mức ưu tiên: ${prioText}
-📈 Tiến độ hiện tại: ${task.progress || 0}%
+
+    // Read customizable template from settings
+    const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+    const template = (templateRow && templateRow.value && templateRow.value.trim()) ? templateRow.value : `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+{nguoi_gui} xin gửi lời nhắc về công việc:
+📋 Tên công việc: {ten_cong_viec}
+⏳ Hạn hoàn thành: {han_chot}
+📊 Mức ưu tiên: {muc_uu_tien}
+📈 Tiến độ hiện tại: {tien_do}%
 ------------------------------------
-Kính nhờ ${honorific} lưu ý bố trí thời gian hoàn thành và cập nhật tiến độ trên hệ thống nhé.
-Trân trọng cảm ơn ${honorific}!`;
+Kính nhờ {danh_xung} lưu ý bố trí thời gian hoàn thành và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+
+    const reminderMsg = template
+      .replace(/{danh_xung}/g, honorific)
+      .replace(/{ho_ten}/g, assignee.full_name)
+      .replace(/{nguoi_gui}/g, user.full_name)
+      .replace(/{ten_cong_viec}/g, task.title)
+      .replace(/{han_chot}/g, task.due_date || 'Chưa định')
+      .replace(/{muc_uu_tien}/g, prioText)
+      .replace(/{tien_do}/g, (task.progress || 0).toString());
 
     const sendRes = await zaloPersonalService.sendToPhone(phone, reminderMsg);
 

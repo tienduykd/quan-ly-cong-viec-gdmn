@@ -142,34 +142,41 @@ async function sendDailyDigest(triggerType = 'cron') {
     // CHẾ ĐỘ 2 (CHỈ GỬI KHI BẤM THỦ CÔNG): Gửi bản tin tổng hợp vào Nhóm Zalo GDMN
     // =========================================================================
     if (triggerType === 'manual_group' || triggerType === 'all') {
-      let groupMsg = `📋 [BẢN TIN NHẮC VIỆC TỔNG HỢP - NGÀNH GDMN]\n`;
-      groupMsg += `📅 Ngày: ${new Date().toLocaleDateString('vi-VN')}\n`;
-      groupMsg += `------------------------------------\n`;
+      const groupTemplateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_group');
+      const groupTemplate = (groupTemplateRow && groupTemplateRow.value && groupTemplateRow.value.trim()) ? groupTemplateRow.value : `📢 [BẢN TIN CÔNG VIỆC HÀNG NGÀY - NGÀNH GDMN]
+📅 Ngày: {ngay}
+------------------------------------
+📌 CÔNG VIỆC ĐẾN HẠN HÔM NAY ({so_viec_hom_nay}):
+{danh_sach_viec_hom_nay}
 
-      if (dueTodayTasks.length === 0 && overdueTasks.length === 0) {
-        groupMsg += `✅ Hôm nay không có công việc nào tới hạn chót hoặc trễ hạn.\n`;
-        groupMsg += `💪 Hiện có ${inProgressCount} công việc đang trong tiến trình xử lý.\n`;
-      } else {
-        if (dueTodayTasks.length > 0) {
-          groupMsg += `⏰ CÔNG VIỆC ĐẾN HẠN HÔM NAY (${dueTodayTasks.length}):\n`;
-          dueTodayTasks.forEach((t, i) => {
-            const prio = t.priority === 'urgent' ? '🔴 KHẨN CẤP' : (t.priority === 'high' ? '🟠 Cao' : '🔵 Bình thường');
-            groupMsg += `${i + 1}. [${prio}] ${t.title}\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%\n`;
-          });
-          groupMsg += `\n`;
-        }
+⚠️ CÔNG VIỆC QUÁ HẠN CẦN XỬ LÝ GẤP ({so_viec_qua_han}):
+{danh_sach_viec_qua_han}
+------------------------------------
+Kính nhờ Quý Thầy/Cô kiểm tra và cập nhật tiến độ công việc trên hệ thống: https://tienduykd.github.io/quan-ly-cong-viec-gdmn
+Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
 
-        if (overdueTasks.length > 0) {
-          groupMsg += `⚠️ CÔNG VIỆC ĐÃ QUÁ HẠN (${overdueTasks.length}):\n`;
-          overdueTasks.forEach((t, i) => {
-            groupMsg += `${i + 1}. ❗ ${t.title} (Hạn: ${t.due_date})\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%\n`;
-          });
-          groupMsg += `\n`;
-        }
+      const todayStr = new Date().toLocaleDateString('vi-VN');
+      let dueListText = '(Không có công việc đến hạn)';
+      if (dueTodayTasks.length > 0) {
+        dueListText = dueTodayTasks.map((t, i) => {
+          const prio = t.priority === 'urgent' ? '🔴 KHẨN CẤP' : (t.priority === 'high' ? '🟠 Cao' : '🔵 Bình thường');
+          return `${i + 1}. [${prio}] ${t.title}\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%`;
+        }).join('\n');
       }
 
-      groupMsg += `👉 Quý Thầy/Cô vui lòng truy cập hệ thống để cập nhật tiến độ công việc.\n`;
-      groupMsg += `Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
+      let overdueListText = '(Không có công việc quá hạn)';
+      if (overdueTasks.length > 0) {
+        overdueListText = overdueTasks.map((t, i) => {
+          return `${i + 1}. ❗ ${t.title} (Hạn: ${t.due_date})\n   👤 Phụ trách: ${t.assignee_name} | Tiến độ: ${t.progress}%`;
+        }).join('\n');
+      }
+
+      let groupMsg = groupTemplate
+        .replace(/{ngay}/g, todayStr)
+        .replace(/{so_viec_hom_nay}/g, dueTodayTasks.length.toString())
+        .replace(/{danh_sach_viec_hom_nay}/g, dueListText)
+        .replace(/{so_viec_qua_han}/g, overdueTasks.length.toString())
+        .replace(/{danh_sach_viec_qua_han}/g, overdueListText);
 
       // Send to Group via Personal Zalo Bot
       if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
@@ -276,43 +283,8 @@ async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
       );
     });
 
-    // 2. Format and send Zalo notification
-    let zaloMsg = `🔔 [THÔNG BÁO CÔNG VIỆC - GDMN]\n`;
-    zaloMsg += `📌 CV: ${task.title}\n`;
-    zaloMsg += `⚡ Sự kiện: ${eventTitle}\n`;
-    zaloMsg += `👤 Thực hiện: ${actorName}\n`;
-    zaloMsg += `📝 Chi tiết: ${detail}\n`;
-    zaloMsg += `------------------------------------\n`;
-    zaloMsg += `👉 Người giao việc: ${task.assigner_name}\n`;
-    zaloMsg += `👉 Người xử lý chính: ${task.assignee_name}\n`;
-    if (followers.length > 0) {
-      zaloMsg += `👥 Người theo dõi: ${followerNames}\n`;
-    }
-    zaloMsg += `⏰ Hạn chót: ${task.due_date} | Tiến độ: ${task.progress}%\n`;
-    zaloMsg += `(Thông báo tự động từ Hệ thống Quản lý công việc GDMN)`;
-
-    // Send direct private Zalo message to stakeholders who have a phone number configured
-    if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
-      const phones = new Set();
-      if (task.assigner_phone) phones.add(task.assigner_phone.trim());
-      if (task.assigner_zalo) phones.add(task.assigner_zalo.trim());
-      if (task.assignee_phone) phones.add(task.assignee_phone.trim());
-      if (task.assignee_zalo) phones.add(task.assignee_zalo.trim());
-      followers.forEach(f => {
-        if (f.phone) phones.add(f.phone.trim());
-        if (f.zalo_phone) phones.add(f.zalo_phone.trim());
-      });
-
-      for (const p of phones) {
-        if (p) {
-          try {
-            await zaloPersonalService.sendToPhone(p, zaloMsg);
-          } catch (phoneErr) {
-            console.warn(`[NOTIFY-PHONE] Không thể gửi tới SĐT ${p}:`, phoneErr.message);
-          }
-        }
-      }
-    }
+    // Ghi chú: Thông báo qua Zalo chỉ thực hiện khi người dùng bấm nút "Nhắc Zalo" của công việc
+    // hoặc theo lịch nhắc việc đầu ngày 07:30 sáng, không tự động spam Zalo mỗi khi sửa/cập nhật công việc.
   } catch (err) {
     console.error('Lỗi khi phát thông báo task event:', err);
   }

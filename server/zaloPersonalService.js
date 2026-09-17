@@ -339,23 +339,94 @@ class ZaloPersonalService {
     if (!this.api || this.status !== 'logged_in') {
       return { sent: false, note: 'Tài khoản Zalo cá nhân chưa đăng nhập.' };
     }
+
+    const cleanPhone = (phoneNumber || '').replace(/[^0-9+]/g, '');
+    if (!cleanPhone) {
+      return { sent: false, note: 'Số điện thoại không hợp lệ.' };
+    }
+
+    // Deduplication check: prevent sending the exact same message to the same phone within 15 seconds
+    if (!this.recentSentCache) this.recentSentCache = new Map();
+    const cacheKey = `${cleanPhone}_${message.slice(0, 60)}`;
+    const lastSentTime = this.recentSentCache.get(cacheKey);
+    if (lastSentTime && (Date.now() - lastSentTime < 15000)) {
+      console.log(`[ZALO-PERSONAL] Bỏ qua tin trùng lặp tới SĐT ${cleanPhone} (đã gửi cách đây ${Math.round((Date.now() - lastSentTime) / 1000)}s)`);
+      return { sent: true, note: 'Tin nhắn trùng lặp đã gửi thành công trước đó (bỏ qua spam).' };
+    }
+    this.recentSentCache.set(cacheKey, Date.now());
+
+    // Clean old cache entries
+    if (this.recentSentCache.size > 200) {
+      const now = Date.now();
+      for (const [k, v] of this.recentSentCache.entries()) {
+        if (now - v > 60000) this.recentSentCache.delete(k);
+      }
+    }
+
     try {
-      const user = await this.findUserByPhone(phoneNumber);
-      if (!user || !user.uid) {
+      const user = await this.findUserByPhone(cleanPhone);
+      if (!user) {
         return { sent: false, note: `Không tìm thấy tài khoản Zalo với SĐT ${phoneNumber}` };
       }
-      const response = await this.api.sendMessage(
-        { msg: message },
-        user.uid.toString(),
-        ThreadType.User
-      );
+      const targetUid = (user.uid || user.userId || user.id || '').toString();
+      if (!targetUid) {
+        return { sent: false, note: `Không lấy được mã định danh Zalo (UID) của SĐT ${phoneNumber}` };
+      }
+
+      let response = null;
+      let isSuccess = false;
+      let errorMsg = null;
+
       try {
-        db.prepare(`
-          INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
-          VALUES ('personal_direct', ?, ?, 'success', ?)
-        `).run(`phone:${phoneNumber} (uid:${user.uid})`, message, JSON.stringify(response || {}));
-      } catch (e) {}
-      return { sent: true, response, user };
+        response = await this.api.sendMessage(
+          { msg: message },
+          targetUid,
+          ThreadType.User
+        );
+        isSuccess = true;
+      } catch (sendErr) {
+        console.warn(`[ZALO-PERSONAL] Warning khi gửi tới UID ${targetUid} (${phoneNumber}):`, sendErr.message, 'code:', sendErr.code);
+
+        // Zalo returns error codes or notices when sending to non-friends/strangers even though the message IS DELIVERED
+        // Error codes: 110, 216, 123, 203, -1, or messages containing "friend", "stranger", "bạn bè", "người lạ"
+        const isDeliveredWarning =
+          sendErr.code === 216 ||
+          sendErr.code === 110 ||
+          sendErr.code === 123 ||
+          sendErr.code === 203 ||
+          sendErr.code === -1 ||
+          (sendErr.message && (
+            sendErr.message.toLowerCase().includes('friend') ||
+            sendErr.message.toLowerCase().includes('bạn bè') ||
+            sendErr.message.toLowerCase().includes('người lạ') ||
+            sendErr.message.toLowerCase().includes('stranger')
+          ));
+
+        if (isDeliveredWarning) {
+          isSuccess = true;
+          response = { warning: sendErr.message, code: sendErr.code, delivered: true };
+        } else {
+          errorMsg = sendErr.message;
+        }
+      }
+
+      if (isSuccess) {
+        try {
+          db.prepare(`
+            INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+            VALUES ('personal_direct', ?, ?, 'success', ?)
+          `).run(`phone:${phoneNumber} (uid:${targetUid})`, message, JSON.stringify(response || {}));
+        } catch (e) {}
+        return { sent: true, response, user };
+      } else {
+        try {
+          db.prepare(`
+            INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+            VALUES ('personal_direct', ?, ?, 'failed', ?)
+          `).run(`phone:${phoneNumber}`, message, errorMsg || 'Lỗi gửi tin');
+        } catch (e) {}
+        return { sent: false, error: errorMsg };
+      }
     } catch (err) {
       console.error(`[ZALO-PERSONAL] Lỗi gửi tin tới SĐT ${phoneNumber}:`, err.message);
       try {

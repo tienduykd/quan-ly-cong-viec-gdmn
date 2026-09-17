@@ -16,7 +16,12 @@ import {
   RefreshCw,
   LogOut,
   Users,
-  Check
+  Check,
+  FileText,
+  RotateCcw,
+  Edit3,
+  Save,
+  MessageCircle
 } from 'lucide-react';
 import { apiRequest, formatVietnamDateTime } from '../api';
 
@@ -35,6 +40,13 @@ export default function ZaloView({ currentUser }) {
   const [error, setError] = useState('');
   const [testContent, setTestContent] = useState('🔔 [TEST] Kiểm tra kết nối từ Phần mềm Quản lý công việc - Ngành GDMN tới Zalo Group thành công!');
   const [guideTab, setGuideTab] = useState('telegram');
+
+  // Templates state
+  const [personalTemplate, setPersonalTemplate] = useState('');
+  const [groupTemplate, setGroupTemplate] = useState('');
+  const [templateTab, setTemplateTab] = useState('personal'); // 'personal' | 'group'
+  const [savingTemplates, setSavingTemplates] = useState(false);
+  const [previewGender, setPreviewGender] = useState('female'); // 'female' | 'male'
 
   // Personal Zalo state
   const [personalStatus, setPersonalStatus] = useState('loading');
@@ -79,9 +91,20 @@ export default function ZaloView({ currentUser }) {
     }
   };
 
+  const loadTemplates = async () => {
+    try {
+      const data = await apiRequest('/zalo/templates');
+      setPersonalTemplate(data.personalTemplate || '');
+      setGroupTemplate(data.groupTemplate || '');
+    } catch (err) {
+      console.error('Lỗi khi tải mẫu tin Zalo:', err);
+    }
+  };
+
   useEffect(() => {
     loadZaloSettings();
     loadPersonalStatus();
+    loadTemplates();
   }, []);
 
   // Poll for QR scan / confirmation if actively logging in or restoring
@@ -258,6 +281,94 @@ export default function ZaloView({ currentUser }) {
       loadPersonalStatus();
     } catch (err) {
       setError('Lỗi đăng xuất: ' + err.message);
+    }
+  };
+
+  const handleSaveTemplates = async () => {
+    setSavingTemplates(true);
+    setMessage('');
+    setError('');
+    try {
+      await apiRequest('/zalo/templates', {
+        method: 'POST',
+        body: JSON.stringify({ personalTemplate, groupTemplate })
+      });
+      setMessage('Lưu các mẫu tin nhắn Zalo thành công!');
+    } catch (err) {
+      setError('Lỗi khi lưu mẫu tin nhắn: ' + err.message);
+    } finally {
+      setSavingTemplates(false);
+    }
+  };
+
+  const handleResetTemplate = async (type) => {
+    const label = type === 'personal' ? 'Mẫu gửi cá nhân' : 'Mẫu gửi nhóm';
+    if (!window.confirm(`Bạn có chắc muốn khôi phục ${label} về định dạng mặc định ban đầu?`)) {
+      return;
+    }
+    try {
+      const res = await apiRequest('/zalo/templates/reset', {
+        method: 'POST',
+        body: JSON.stringify({ type })
+      });
+      if (type === 'personal' || type === 'all') setPersonalTemplate(res.personalTemplate);
+      if (type === 'group' || type === 'all') setGroupTemplate(res.groupTemplate);
+      setMessage(`Đã khôi phục ${label} về mẫu mặc định!`);
+    } catch (err) {
+      setError('Lỗi khôi phục mẫu: ' + err.message);
+    }
+  };
+
+  const handleInsertTag = (tag) => {
+    if (templateTab === 'personal') {
+      setPersonalTemplate(prev => (prev ? prev + ' ' + tag : tag));
+    } else {
+      setGroupTemplate(prev => (prev ? prev + ' ' + tag : tag));
+    }
+  };
+
+  const getPersonalPreview = (gender = 'female') => {
+    const isMale = gender === 'male';
+    const honorific = isMale ? 'Thầy' : 'Cô';
+    const name = isMale ? 'Nguyễn Công Trường' : 'Huỳnh Thị Thúy Diễm';
+    const sender = currentUser?.full_name || 'Đặng Thị Út Phương';
+    return (personalTemplate || '')
+      .replace(/{danh_xung}/g, honorific)
+      .replace(/{ho_ten}/g, name)
+      .replace(/{nguoi_gui}/g, sender)
+      .replace(/{ten_cong_viec}/g, 'Báo cáo kiểm định chất lượng CTĐT Giáo dục Mầm non')
+      .replace(/{han_chot}/g, '25/09/2026')
+      .replace(/{muc_uu_tien}/g, '🔴 KHẨN CẤP')
+      .replace(/{tien_do}/g, '45');
+  };
+
+  const getGroupPreview = () => {
+    const today = new Date().toLocaleDateString('vi-VN');
+    const dueSample = `1. [🔴 KHẨN CẤP] Rà soát đề cương HK1\n   👤 Phụ trách: Thầy Nguyễn Công Trường | Tiến độ: 60%\n2. [🟠 Cao] Kế hoạch thực tập SP mầm non\n   👤 Phụ trách: Cô Huỳnh Thị Thúy Diễm | Tiến độ: 80%`;
+    const overdueSample = `1. ❗ Báo cáo tự đánh giá TC 3 (Hạn: 15/09/2026)\n   👤 Phụ trách: Cô Lê Thanh Huyền | Tiến độ: 50%`;
+    return (groupTemplate || '')
+      .replace(/{ngay}/g, today)
+      .replace(/{so_viec_hom_nay}/g, '2')
+      .replace(/{danh_sach_viec_hom_nay}/g, dueSample)
+      .replace(/{so_viec_qua_han}/g, '1')
+      .replace(/{danh_sach_viec_qua_han}/g, overdueSample);
+  };
+
+  const getMessageTypeBadge = (type) => {
+    switch (type) {
+      case 'remind_personal':
+      case 'personal_direct':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">💬 Nhắc riêng (1-1)</span>;
+      case 'manual_personal':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">💬 Nhắc riêng loạt</span>;
+      case 'manual_group':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">📢 Nhóm GDMN</span>;
+      case 'cron':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">⏰ Tự động (07:30)</span>;
+      case 'test':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">🧪 Kiểm tra</span>;
+      default:
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">{type}</span>;
     }
   };
 
@@ -964,6 +1075,231 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
         </div>
       )}
 
+      {/* SECTION: QUẢN LÝ MẪU TIN NHẮN ZALO */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-blue-600" />
+              Quản lý Mẫu Tin Nhắn Zalo
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tùy chỉnh nội dung tin nhắn gửi vào Zalo cá nhân hoặc nhóm chung. Zalo sẽ tự động sử dụng mẫu này khi gửi.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleResetTemplate(templateTab)}
+              disabled={!isAdmin}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+              title="Khôi phục mẫu tin này về định dạng mặc định"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Khôi phục mặc định</span>
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleSaveTemplates}
+                disabled={savingTemplates}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-sm transition disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{savingTemplates ? 'Đang lưu...' : 'Lưu mẫu tin'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Template Type Tabs */}
+        <div className="flex border border-slate-200 p-1 bg-slate-100/80 rounded-xl w-full sm:w-fit gap-1">
+          <button
+            type="button"
+            onClick={() => setTemplateTab('personal')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+              templateTab === 'personal'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <MessageCircle className="w-4 h-4 text-blue-600" />
+            <span>1. Mẫu gửi cá nhân (1-1 riêng)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplateTab('group')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+              templateTab === 'group'
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-4 h-4 text-teal-600" />
+            <span>2. Mẫu gửi nhóm chung (GDMN)</span>
+          </button>
+        </div>
+
+        {/* TAB 1: MẪU GỬI CÁ NHÂN */}
+        {templateTab === 'personal' ? (
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Cá nhân hóa danh xưng Thầy/Cô tự động:</strong>
+                <span>
+                  Thẻ <code className="font-mono bg-blue-100 px-1 py-0.5 rounded">{'{danh_xung}'}</code> sẽ tự động đổi thành <strong>Thầy</strong> nếu giảng viên có giới tính Nam, hoặc thành <strong>Cô</strong> nếu là Nữ (theo khai báo giới tính trong Danh sách giảng viên).
+                </span>
+              </div>
+            </div>
+
+            {/* Quick insert tag buttons */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Bấm vào để chèn thẻ dữ liệu vào mẫu tin:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: '{danh_xung}', label: 'Danh xưng (Thầy/Cô)' },
+                  { tag: '{ho_ten}', label: 'Họ tên giảng viên' },
+                  { tag: '{nguoi_gui}', label: 'Người gửi / Giao việc' },
+                  { tag: '{ten_cong_viec}', label: 'Tên công việc' },
+                  { tag: '{han_chot}', label: 'Hạn hoàn thành' },
+                  { tag: '{muc_uu_tien}', label: 'Mức ưu tiên' },
+                  { tag: '{tien_do}', label: 'Tiến độ (%)' },
+                ].map(item => (
+                  <button
+                    key={item.tag}
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => handleInsertTag(item.tag)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
+                    title={`Chèn ${item.tag}`}
+                  >
+                    <span className="font-bold text-blue-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Textarea */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Nội dung mẫu tin nhắn cá nhân:
+                </label>
+                <textarea
+                  disabled={!isAdmin}
+                  rows={12}
+                  value={personalTemplate}
+                  onChange={(e) => setPersonalTemplate(e.target.value)}
+                  placeholder="Nhập nội dung mẫu tin nhắn gửi cá nhân..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed"
+                />
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="space-y-1.5 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Xem trước kết quả hiển thị trên Zalo:
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('female')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'female' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Cô Diễm (Nữ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('male')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'male' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Thầy Trường (Nam)
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-800 shadow-inner overflow-y-auto max-h-[300px]">
+                  {getPersonalPreview(previewGender)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* TAB 2: MẪU GỬI NHÓM CHUNG */
+          <div className="space-y-4">
+            <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Bản tin nhóm ngành GDMN:</strong>
+                <span>
+                  Được dùng khi Quản trị viên bấm nút "Phát bản tin vào Nhóm Zalo GDMN" để thông báo tổng kết các việc đến hạn và quá hạn trong ngày.
+                </span>
+              </div>
+            </div>
+
+            {/* Quick insert tag buttons for group */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Bấm vào để chèn thẻ dữ liệu vào mẫu tin:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: '{ngay}', label: 'Ngày hiện tại' },
+                  { tag: '{so_viec_hom_nay}', label: 'Số việc đến hạn' },
+                  { tag: '{danh_sach_viec_hom_nay}', label: 'Danh sách việc đến hạn' },
+                  { tag: '{so_viec_qua_han}', label: 'Số việc quá hạn' },
+                  { tag: '{danh_sach_viec_qua_han}', label: 'Danh sách việc quá hạn' },
+                ].map(item => (
+                  <button
+                    key={item.tag}
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => handleInsertTag(item.tag)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
+                    title={`Chèn ${item.tag}`}
+                  >
+                    <span className="font-bold text-teal-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Textarea */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Nội dung mẫu tin nhắn nhóm:
+                </label>
+                <textarea
+                  disabled={!isAdmin}
+                  rows={12}
+                  value={groupTemplate}
+                  onChange={(e) => setGroupTemplate(e.target.value)}
+                  placeholder="Nhập nội dung mẫu tin nhắn gửi nhóm..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none leading-relaxed"
+                />
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="space-y-1.5 flex flex-col">
+                <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  Xem trước bản tin nhóm:
+                </label>
+                <div className="flex-1 bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-800 shadow-inner overflow-y-auto max-h-[300px]">
+                  {getGroupPreview()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Zalo Logs Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -980,6 +1316,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
               <tr>
                 <th className="py-3 px-4">Thời gian</th>
                 <th className="py-3 px-4">Loại tin nhắn</th>
+                <th className="py-3 px-4">Người nhận / SĐT / Nhóm</th>
                 <th className="py-3 px-4">Nội dung tin</th>
                 <th className="py-3 px-4 text-center">Trạng thái</th>
               </tr>
@@ -987,7 +1324,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
             <tbody className="divide-y divide-slate-100">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-8 text-center text-slate-400">
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
                     Chưa có nhật ký gửi tin nào.
                   </td>
                 </tr>
@@ -998,11 +1335,15 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                       {formatVietnamDateTime(log.sent_at)}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-700">
-                      {log.message_type === 'cron' ? '⏰ Tự động (07:30)' :
-                       log.message_type === 'manual_trigger' ? '👉 Thủ công Admin' : 'Kiểm tra (Test)'}
+                      {getMessageTypeBadge(log.message_type)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-mono text-[11px]">
+                      {log.recipient || '---'}
                     </td>
                     <td className="py-3 px-4 max-w-md">
-                      <p className="truncate text-slate-700 font-mono text-[11px]">{log.content}</p>
+                      <p className="truncate text-slate-700 font-mono text-[11px]" title={log.content}>
+                        {log.content}
+                      </p>
                     </td>
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       {log.status === 'success' ? (
@@ -1010,7 +1351,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                           Thành công
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800" title={log.response_data || ''}>
                           Thất bại
                         </span>
                       )}

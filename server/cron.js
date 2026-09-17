@@ -181,8 +181,8 @@ async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
   try {
     const task = db.prepare(`
       SELECT t.*, 
-             u_assigner.full_name as assigner_name,
-             u_assignee.full_name as assignee_name
+             u_assigner.full_name as assigner_name, u_assigner.phone as assigner_phone, u_assigner.zalo_phone as assigner_zalo,
+             u_assignee.full_name as assignee_name, u_assignee.phone as assignee_phone, u_assignee.zalo_phone as assignee_zalo
       FROM tasks t
       JOIN users u_assigner ON t.assigner_id = u_assigner.id
       JOIN users u_assignee ON t.assignee_id = u_assignee.id
@@ -192,7 +192,7 @@ async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
     if (!task) return;
 
     const followers = db.prepare(`
-      SELECT u.id, u.full_name FROM task_followers tf
+      SELECT u.id, u.full_name, u.phone, u.zalo_phone FROM task_followers tf
       JOIN users u ON tf.user_id = u.id
       WHERE tf.task_id = ?
     `).all(taskId);
@@ -232,9 +232,33 @@ async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
       zaloMsg += `👥 Người theo dõi: ${followerNames}\n`;
     }
     zaloMsg += `⏰ Hạn chót: ${task.due_date} | Tiến độ: ${task.progress}%\n`;
-    zaloMsg += `(Đã gửi thông báo tới Người giao việc, Người xử lý chính và các nhân sự theo dõi)`;
+    zaloMsg += `(Thông báo tự động từ Hệ thống Quản lý công việc GDMN)`;
 
+    // 3. Send to group (Personal bot or Webhook)
     await sendZaloMessage(zaloMsg, 'task_event');
+
+    // 4. Send direct private Zalo message to stakeholders who have a phone number configured
+    if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
+      const phones = new Set();
+      if (task.assigner_phone) phones.add(task.assigner_phone.trim());
+      if (task.assigner_zalo) phones.add(task.assigner_zalo.trim());
+      if (task.assignee_phone) phones.add(task.assignee_phone.trim());
+      if (task.assignee_zalo) phones.add(task.assignee_zalo.trim());
+      followers.forEach(f => {
+        if (f.phone) phones.add(f.phone.trim());
+        if (f.zalo_phone) phones.add(f.zalo_phone.trim());
+      });
+
+      for (const p of phones) {
+        if (p) {
+          try {
+            await zaloPersonalService.sendToPhone(p, zaloMsg);
+          } catch (phoneErr) {
+            console.warn(`[NOTIFY-PHONE] Không thể gửi tới SĐT ${p}:`, phoneErr.message);
+          }
+        }
+      }
+    }
   } catch (err) {
     console.error('Lỗi khi phát thông báo task event:', err);
   }

@@ -25,13 +25,28 @@ router.post('/start-qr', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
+// POST /api/zalo-personal/refresh-groups
+router.post('/refresh-groups', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const groups = await zaloPersonalService.loadGroups();
+    await zaloPersonalService.loadAccountInfo();
+    res.json({
+      success: true,
+      groups,
+      userInfo: zaloPersonalService.userInfo
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/zalo-personal/select-group
 router.post('/select-group', authMiddleware, adminOnly, (req, res) => {
   const { groupId } = req.body;
-  if (!groupId) {
-    return res.status(400).json({ error: 'Vui lòng chọn Nhóm Zalo.' });
+  if (!groupId || !groupId.trim()) {
+    return res.status(400).json({ error: 'Vui lòng chọn hoặc nhập ID Nhóm Zalo.' });
   }
-  zaloPersonalService.setTargetGroup(groupId);
+  zaloPersonalService.setTargetGroup(groupId.trim());
   res.json({ success: true, message: 'Đã lưu nhóm Zalo nhận thông báo thành công!' });
 });
 
@@ -44,12 +59,18 @@ router.post('/toggle-enabled', authMiddleware, adminOnly, (req, res) => {
 
 // POST /api/zalo-personal/test-send
 router.post('/test-send', authMiddleware, adminOnly, async (req, res) => {
-  const { message, groupId } = req.body;
+  const { message, groupId, phone } = req.body;
   const content = message || '🔔 [TEST THÔNG BÁO] Kết nối thành công từ Bot Zalo Cá nhân - Phần mềm Quản lý công việc GDMN!';
 
-  const result = await zaloPersonalService.sendMessage(content, groupId);
+  let result;
+  if (phone) {
+    result = await zaloPersonalService.sendToPhone(phone, content);
+  } else {
+    result = await zaloPersonalService.sendMessage(content, groupId);
+  }
+
   if (result.sent) {
-    res.json({ success: true, message: 'Đã gửi tin nhắn thử nghiệm thành công vào nhóm Zalo!' });
+    res.json({ success: true, message: 'Đã gửi tin nhắn thử nghiệm Zalo thành công!' });
   } else {
     res.status(400).json({ success: false, error: result.error || result.note || 'Gửi thất bại' });
   }

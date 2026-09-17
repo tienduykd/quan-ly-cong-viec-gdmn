@@ -44,6 +44,7 @@ export default function ZaloView({ currentUser }) {
   const [personalEnabled, setPersonalEnabled] = useState(true);
   const [loadingPersonal, setLoadingPersonal] = useState(false);
   const [testingPersonal, setTestingPersonal] = useState(false);
+  const [refreshingGroups, setRefreshingGroups] = useState(false);
 
   const isAdmin = currentUser.role === 'admin' || currentUser.username === 'dangutphuong';
 
@@ -196,6 +197,22 @@ export default function ZaloView({ currentUser }) {
       setMessage(enabledVal ? 'Đã kích hoạt tự động gửi qua Zalo cá nhân!' : 'Đã tắt tự động gửi qua Zalo cá nhân.');
     } catch (err) {
       setError('Lỗi cập nhật: ' + err.message);
+    }
+  };
+
+  const handleRefreshGroups = async () => {
+    setRefreshingGroups(true);
+    setMessage('');
+    setError('');
+    try {
+      const res = await apiRequest('/zalo-personal/refresh-groups', { method: 'POST' });
+      setPersonalGroups(res.groups || []);
+      if (res.userInfo) setPersonalUserInfo(res.userInfo);
+      setMessage(`Đã đồng bộ lại danh sách nhóm! Tìm thấy ${res.groups?.length || 0} nhóm Zalo.`);
+    } catch (err) {
+      setError('Lỗi tải lại danh sách nhóm: ' + err.message);
+    } finally {
+      setRefreshingGroups(false);
     }
   };
 
@@ -459,10 +476,25 @@ export default function ZaloView({ currentUser }) {
                   {/* Group Selection Card */}
                   <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-sm">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                        <Users className="w-4 h-4 text-teal-600" />
-                        Chọn Nhóm Zalo nhận thông báo:
-                      </label>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-teal-600" />
+                          Chọn Nhóm Zalo nhận thông báo:
+                        </label>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={handleRefreshGroups}
+                            disabled={refreshingGroups}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition disabled:opacity-50"
+                            title="Tải lại danh sách nhóm Zalo mới nhất"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${refreshingGroups ? 'animate-spin' : ''}`} />
+                            <span>{refreshingGroups ? 'Đang quét nhóm...' : 'Làm mới nhóm'}</span>
+                          </button>
+                        )}
+                      </div>
+
                       <select
                         disabled={!isAdmin}
                         value={personalTargetGroupId}
@@ -476,9 +508,46 @@ export default function ZaloView({ currentUser }) {
                           </option>
                         ))}
                       </select>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        (Danh sách lấy tự động từ các nhóm Zalo mà tài khoản của bạn đang tham gia).
-                      </p>
+
+                      {personalGroups.length === 0 ? (
+                        <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] space-y-1">
+                          <div className="font-semibold flex items-center gap-1">
+                            <span>⚠️ Chưa thấy danh sách nhóm Zalo.</span>
+                          </div>
+                          <p>
+                            Hãy nhấn nút <strong>"Làm mới nhóm"</strong> ở trên, hoặc bạn có thể <strong>dán trực tiếp ID nhóm Zalo</strong> vào ô bên dưới để lưu.
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          (Đã đồng bộ {personalGroups.length} nhóm Zalo mà tài khoản của bạn đang tham gia).
+                        </p>
+                      )}
+
+                      {/* Manual Group ID input */}
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Hoặc nhập / dán trực tiếp ID Nhóm Zalo:
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            disabled={!isAdmin}
+                            value={personalTargetGroupId}
+                            onChange={(e) => setPersonalTargetGroupId(e.target.value)}
+                            placeholder="Nhập ID Nhóm Zalo (ví dụ: 123456789...)"
+                            className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-teal-500"
+                          />
+                          <button
+                            type="button"
+                            disabled={!isAdmin || !personalTargetGroupId}
+                            onClick={() => handleSelectPersonalGroup(personalTargetGroupId)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition"
+                          >
+                            Lưu ID
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
                     <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 pt-1">
@@ -493,7 +562,7 @@ export default function ZaloView({ currentUser }) {
                     </label>
 
                     {isAdmin && (
-                      <div className="pt-2">
+                      <div className="pt-2 space-y-1.5">
                         <button
                           type="button"
                           onClick={handleTestPersonalSend}
@@ -503,6 +572,11 @@ export default function ZaloView({ currentUser }) {
                           <Send className="w-3.5 h-3.5" />
                           {testingPersonal ? 'Đang gửi thử...' : 'Gửi tin nhắn thử nghiệm vào nhóm Zalo'}
                         </button>
+                        {!personalTargetGroupId && (
+                          <p className="text-[11px] text-amber-600 text-center font-medium">
+                            * Vui lòng chọn một nhóm Zalo hoặc nhập ID nhóm ở trên để bật nút gửi thử nghiệm.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

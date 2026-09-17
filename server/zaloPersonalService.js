@@ -55,40 +55,81 @@ class ZaloPersonalService {
     if (!this.api) return;
     try {
       const info = await this.api.fetchAccountInfo();
-      if (info && info.data) {
-        this.userInfo = {
-          uid: info.data.userId || info.data.uid || '',
-          name: info.data.name || info.data.displayName || 'Tài khoản Zalo Cá nhân',
-          avatar: info.data.avatar || info.data.thumb || ''
-        };
-      }
+      const profile = info?.profile || info?.data || info || {};
+      this.userInfo = {
+        uid: String(profile.userId || profile.uid || ''),
+        name: profile.displayName || profile.zaloName || profile.username || 'Tài khoản Zalo Cá nhân',
+        avatar: profile.avatar || ''
+      };
+      console.log('[ZALO-PERSONAL] Đã tải thông tin tài khoản:', this.userInfo.name, 'UID:', this.userInfo.uid);
     } catch (e) {
-      this.userInfo = { name: 'Tài khoản Zalo Cá nhân' };
+      console.error('[ZALO-PERSONAL] Lỗi tải thông tin tài khoản:', e.message);
+      if (!this.userInfo) {
+        this.userInfo = { name: 'Tài khoản Zalo Cá nhân', uid: '' };
+      }
     }
   }
 
   async loadGroups() {
     if (!this.api) return [];
     try {
+      console.log('[ZALO-PERSONAL] Đang tải danh sách nhóm Zalo...');
       const res = await this.api.getAllGroups();
-      if (res && res.data && res.data.gridInfoMap) {
-        // gridInfoMap is an object map of groupId -> groupInfo
+      
+      // getAllGroups returns { version, gridVerMap: { [groupId]: string } }
+      const gridVerMap = res?.gridVerMap || res?.data?.gridVerMap || {};
+      const groupIds = Object.keys(gridVerMap);
+      console.log(`[ZALO-PERSONAL] Tìm thấy ${groupIds.length} nhóm trong tài khoản.`);
+
+      if (groupIds.length > 0) {
+        const groupList = [];
+        // Batch in chunks of 40 to avoid URL/payload size limits
+        for (let i = 0; i < groupIds.length; i += 40) {
+          const chunk = groupIds.slice(i, i + 40);
+          try {
+            const infoRes = await this.api.getGroupInfo(chunk);
+            const gridMap = infoRes?.gridInfoMap || infoRes?.data?.gridInfoMap || {};
+            for (const [id, g] of Object.entries(gridMap)) {
+              groupList.push({
+                id: String(g.groupId || g.grid || id),
+                name: g.name || `Nhóm ${id}`,
+                memberCount: g.totalMember || (Array.isArray(g.memIds) ? g.memIds.length : 0),
+                avatar: g.avatar || ''
+              });
+            }
+          } catch (chunkErr) {
+            console.error('[ZALO-PERSONAL] Lỗi getGroupInfo batch:', chunkErr.message);
+            // Fallback for this chunk so user can still select group by ID
+            for (const id of chunk) {
+              groupList.push({
+                id: String(id),
+                name: `Nhóm Zalo (${id})`,
+                memberCount: 0,
+                avatar: ''
+              });
+            }
+          }
+        }
+
+        // Sort groups alphabetically by name
+        groupList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'vi'));
+        this.groups = groupList;
+      } else if (res?.data && res.data.gridInfoMap) {
         this.groups = Object.values(res.data.gridInfoMap).map(g => ({
-          id: g.grid || g.groupId || g.id,
+          id: String(g.grid || g.groupId || g.id),
           name: g.name || 'Nhóm không tên',
-          memberCount: g.totalMember || (g.memIds ? g.memIds.length : 0)
+          memberCount: g.totalMember || 0,
+          avatar: g.avatar || ''
         }));
-      } else if (Array.isArray(res?.data)) {
-        this.groups = res.data.map(g => ({
-          id: g.grid || g.groupId || g.id,
-          name: g.name || 'Nhóm không tên',
-          memberCount: g.totalMember || 0
-        }));
+      } else {
+        this.groups = [];
       }
+
+      console.log(`[ZALO-PERSONAL] Đã đồng bộ ${this.groups.length} nhóm Zalo.`);
       return this.groups;
     } catch (e) {
       console.error('[ZALO-PERSONAL] Lỗi tải danh sách nhóm:', e.message);
-      return [];
+      return this.groups || [];
     }
   }
 
@@ -138,8 +179,12 @@ class ZaloPersonalService {
         this.qrImage = null;
         this.error = null;
         console.log('[ZALO-PERSONAL] Đăng nhập Zalo cá nhân thành công!');
-        await this.loadAccountInfo();
-        await this.loadGroups();
+        try {
+          await this.loadAccountInfo();
+          await this.loadGroups();
+        } catch (e) {
+          console.error('[ZALO-PERSONAL] Lỗi sau khi đăng nhập:', e.message);
+        }
         return { status: 'logged_in', userInfo: this.userInfo };
       })
       .catch((err) => {
@@ -168,9 +213,9 @@ class ZaloPersonalService {
   }
 
   setTargetGroup(groupId) {
-    this.targetGroupId = groupId;
+    this.targetGroupId = String(groupId || '').trim();
     try {
-      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_group_id', groupId);
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_group_id', this.targetGroupId);
     } catch (e) {}
   }
 
@@ -181,43 +226,101 @@ class ZaloPersonalService {
     } catch (e) {}
   }
 
-  async sendMessage(message, overrideGroupId = null) {
+  async findUserByPhone(phoneNumber) {
+    if (!this.api || this.status !== 'logged_in') return null;
+    try {
+      const cleanPhone = phoneNumber.replace(/[^0-9+]/g, '');
+      const user = await this.api.findUser(cleanPhone);
+      return user; // { uid, display_name, zalo_name, avatar }
+    } catch (err) {
+      console.warn(`[ZALO-PERSONAL] Không tìm thấy user với SĐT ${phoneNumber}:`, err.message);
+      return null;
+    }
+  }
+
+  async sendToPhone(phoneNumber, message) {
+    if (!this.api || this.status !== 'logged_in') {
+      return { sent: false, note: 'Tài khoản Zalo cá nhân chưa đăng nhập.' };
+    }
+    try {
+      const user = await this.findUserByPhone(phoneNumber);
+      if (!user || !user.uid) {
+        return { sent: false, note: `Không tìm thấy tài khoản Zalo với SĐT ${phoneNumber}` };
+      }
+      const response = await this.api.sendMessage(
+        { msg: message },
+        user.uid.toString(),
+        ThreadType.User
+      );
+      try {
+        db.prepare(`
+          INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+          VALUES ('personal_direct', ?, ?, 'success', ?)
+        `).run(`phone:${phoneNumber} (uid:${user.uid})`, message, JSON.stringify(response || {}));
+      } catch (e) {}
+      return { sent: true, response, user };
+    } catch (err) {
+      console.error(`[ZALO-PERSONAL] Lỗi gửi tin tới SĐT ${phoneNumber}:`, err.message);
+      try {
+        db.prepare(`
+          INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+          VALUES ('personal_direct', ?, ?, 'failed', ?)
+        `).run(`phone:${phoneNumber}`, message, err.message);
+      } catch (e) {}
+      return { sent: false, error: err.message };
+    }
+  }
+
+  async sendMessage(message, overrideTarget = null) {
     if (!this.api || this.status !== 'logged_in') {
       return { sent: false, note: 'Tài khoản Zalo cá nhân chưa đăng nhập.' };
     }
 
-    if (!this.enabled && !overrideGroupId) {
+    if (!this.enabled && !overrideTarget) {
       return { sent: false, note: 'Gửi qua Zalo cá nhân đang bị tắt.' };
     }
 
-    const groupId = overrideGroupId || this.targetGroupId;
-    if (!groupId) {
-      return { sent: false, note: 'Chưa chọn Nhóm Zalo nhận tin nhắn.' };
+    const rawTarget = (overrideTarget || this.targetGroupId || '').toString().trim();
+    if (!rawTarget) {
+      return { sent: false, note: 'Chưa chọn hoặc chưa nhập ID Nhóm Zalo nhận tin nhắn.' };
+    }
+
+    // Check if rawTarget is a phone number (e.g. 10 digits starting with 0 or +84)
+    if (/^(\+?84|0)[3|5|7|8|9][0-9]{8}$/.test(rawTarget)) {
+      return this.sendToPhone(rawTarget, message);
     }
 
     try {
+      const isDirectUser = rawTarget.startsWith('u:') || rawTarget.startsWith('user:');
+      const targetId = isDirectUser ? rawTarget.replace(/^(u:|user:)/, '').trim() : rawTarget;
+      const threadType = isDirectUser ? ThreadType.User : ThreadType.Group;
+
+      console.log(`[ZALO-PERSONAL] Đang gửi tin nhắn tới ${isDirectUser ? 'User' : 'Group'} ID: ${targetId}`);
+
       const response = await this.api.sendMessage(
         { msg: message },
-        groupId.toString(),
-        ThreadType.Group
+        targetId,
+        threadType
       );
+
+      console.log(`[ZALO-PERSONAL] Gửi thành công tới ${targetId}:`, response);
 
       // Record log in zalo_logs
       try {
         db.prepare(`
           INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
           VALUES ('personal_zalo', ?, ?, 'success', ?)
-        `).run(`group:${groupId}`, message, JSON.stringify(response || {}));
+        `).run(`${isDirectUser ? 'user' : 'group'}:${targetId}`, message, JSON.stringify(response || {}));
       } catch (e) {}
 
       return { sent: true, response };
     } catch (err) {
-      console.error('[ZALO-PERSONAL] Lỗi gửi tin nhắn vào nhóm:', err.message);
+      console.error('[ZALO-PERSONAL] Lỗi gửi tin nhắn Zalo:', err.message);
       try {
         db.prepare(`
           INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
           VALUES ('personal_zalo', ?, ?, 'failed', ?)
-        `).run(`group:${groupId}`, message, err.message);
+        `).run(`target:${rawTarget}`, message, err.message);
       } catch (e) {}
 
       return { sent: false, error: err.message };

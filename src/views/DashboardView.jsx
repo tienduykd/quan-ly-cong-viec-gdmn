@@ -111,13 +111,14 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
             <Sparkles className="w-3.5 h-3.5 text-teal-300" />
             <span>Ngành Giáo dục Mầm non • Năm học 2026 - 2027</span>
           </div>
+          {/* Banner Salutation */}
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-            Kính chào {isAdmin ? 'Cô' : 'Thầy/Cô'} {user.full_name}!
+            Kính chào {user.gender === 'Nam' ? 'Thầy' : 'Cô'} {user.full_name}!
           </h1>
           <p className="text-teal-100 text-xs sm:text-sm mt-1 leading-relaxed">
             {isAdmin
-              ? 'Chào mừng Cô đến với trung tâm điều hành & quản lý công việc ngành GDMN. Dưới đây là bức tranh tổng thể về tiến độ của các Tổ chuyên môn.'
-              : 'Chào mừng Thầy/Cô. Theo dõi tiến độ các nhiệm vụ chuyên môn và rèn nghề được phân công.'}
+              ? `Chào mừng ${user.gender === 'Nam' ? 'Thầy' : 'Cô'} đến với trung tâm điều hành & quản lý công việc ngành GDMN. Dưới đây là bức tranh tổng thể về tiến độ của các Tổ chuyên môn.`
+              : `Chào mừng ${user.gender === 'Nam' ? 'Thầy' : 'Cô'}. Theo dõi tiến độ các nhiệm vụ chuyên môn và rèn nghề được phân công.`}
           </p>
 
           {/* Quick Action Buttons in Banner */}

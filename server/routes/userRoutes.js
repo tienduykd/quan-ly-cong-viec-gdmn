@@ -127,7 +127,8 @@ router.put('/:id', authMiddleware, (req, res) => {
 
     const newRole = isAdmin ? (role || targetUser.role) : targetUser.role;
     const newDept = isAdmin ? (department_id ? parseInt(department_id) : null) : targetUser.department_id;
-    const newZalo = zalo_phone ? zalo_phone.trim() : (phone ? phone.trim() : targetUser.zalo_phone);
+    const newPhone = phone !== undefined ? (phone && phone.trim() ? phone.trim() : null) : targetUser.phone;
+    const newZalo = zalo_phone !== undefined ? (zalo_phone && zalo_phone.trim() ? zalo_phone.trim() : null) : (newPhone || null);
 
     db.prepare(`
       UPDATE users SET
@@ -150,7 +151,7 @@ router.put('/:id', authMiddleware, (req, res) => {
       position ? position.trim() : targetUser.position,
       gender || targetUser.gender,
       newDept,
-      phone ? phone.trim() : targetUser.phone,
+      newPhone,
       newZalo,
       newRole,
       targetId

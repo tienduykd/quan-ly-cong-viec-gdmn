@@ -238,7 +238,8 @@ export default function UsersView({ currentUser }) {
 
     const defaultPass = `${lastName}123`;
 
-    if (!window.confirm(`Bạn có chắc muốn đặt lại mật khẩu cho Thầy/Cô ${userObj.full_name} về mặc định (${defaultPass})?`)) {
+    const salutation = userObj.gender === 'Nam' ? 'Thầy' : 'Cô';
+    if (!window.confirm(`Bạn có chắc muốn đặt lại mật khẩu cho ${salutation} ${userObj.full_name} về mặc định (${defaultPass})?`)) {
       return;
     }
 
@@ -423,10 +424,14 @@ export default function UsersView({ currentUser }) {
 
                     {/* Phone / Zalo Column */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 font-bold px-2.5 py-1 rounded-lg text-[11px] border border-blue-200/50">
-                        <Phone className="w-3.5 h-3.5 text-blue-600" />
-                        <span>{displayPhone}</span>
-                      </div>
+                      {u.zalo_phone || u.phone ? (
+                        <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 font-bold px-2.5 py-1 rounded-lg text-[11px] border border-blue-200/50">
+                          <Phone className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{u.zalo_phone || u.phone}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">Chưa có SĐT</span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-slate-700 font-medium whitespace-nowrap">{u.degree}</td>
@@ -565,18 +570,17 @@ export default function UsersView({ currentUser }) {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Số điện thoại (Nhận tin nhắn Zalo) *</span>
+                  <span>Số điện thoại (Nhận tin nhắn Zalo) - Tùy chọn</span>
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="0912345678"
+                  placeholder="0912345678 (để trống nếu chưa muốn gửi Zalo)"
                   value={createForm.phone}
                   onChange={(e) => setCreateForm(prev => ({ ...prev, phone: e.target.value, zalo_phone: e.target.value }))}
-                  className="w-full px-3.5 py-2 text-xs border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 bg-blue-50/30"
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 font-medium text-slate-800"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Số điện thoại này sẽ được dùng để gửi thông báo nhắc việc và đồng bộ với tài khoản Zalo cá nhân.
+                  Nhập số điện thoại nếu muốn nhân sự này nhận thông báo nhắc việc tự động qua Zalo.
                 </p>
               </div>
 
@@ -716,18 +720,17 @@ export default function UsersView({ currentUser }) {
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Số điện thoại (Nhận tin nhắn Zalo) *</span>
+                  <span>Số điện thoại (Nhận tin nhắn Zalo) - Tùy chọn</span>
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="0912345678"
-                  value={editForm.zalo_phone}
+                  placeholder="Để trống nếu chưa muốn gửi Zalo"
+                  value={editForm.zalo_phone || ''}
                   onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value, zalo_phone: e.target.value }))}
-                  className="w-full px-3.5 py-2 text-xs border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold text-blue-800 bg-blue-50/30"
+                  className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500 font-medium text-slate-800"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Số điện thoại này sẽ nhận các thông báo nhắc việc và đồng bộ với hệ thống Zalo.
+                  Nhập số điện thoại nếu muốn nhân sự này nhận thông báo nhắc việc qua Zalo. Để trống để tạm tắt.
                 </p>
               </div>
 

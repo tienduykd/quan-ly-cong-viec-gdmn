@@ -185,27 +185,6 @@ function initDb() {
     );
   `);
 
-  // Migration: Ensure phone numbers are populated if null
-  const samplePhones = [
-    '0903842187', '0912345678', '0987654321', '0978123456', '0936789012',
-    '0913456789', '0908765432', '0982345678', '0973456789', '0915678901',
-    '0909123456', '0984567890', '0975678901', '0918901234', '0906789012',
-    '0988901234', '0979012345', '0916789012', '0905678901', '0983456789',
-    '0976789012'
-  ];
-  try {
-    const usersWithoutPhone = db.prepare("SELECT id FROM users WHERE phone IS NULL OR phone = ''").all();
-    if (usersWithoutPhone.length > 0) {
-      const updatePhone = db.prepare('UPDATE users SET phone = ?, zalo_phone = ? WHERE id = ?');
-      usersWithoutPhone.forEach((u, i) => {
-        const p = samplePhones[(u.id - 1) % samplePhones.length] || ('098' + (1000000 + u.id));
-        updatePhone.run(p, p, u.id);
-      });
-    }
-  } catch (e) {
-    console.error('Phone migration notice:', e.message);
-  }
-
   seedData();
 }
 

@@ -134,9 +134,24 @@ class SupabaseService {
         bucketFound = true;
       }
 
+      // 3. Test WRITE permission to bucket
+      const testBuffer = Buffer.from('test_write_' + Date.now());
+      const { error: writeErr } = await client.storage.from(BUCKET_NAME).upload('.test_write.txt', testBuffer, { upsert: true });
+      if (writeErr) {
+        return {
+          success: false,
+          error: `Kết nối được tới Supabase nhưng KHÔNG CÓ QUYỀN GHI vào bucket "${BUCKET_NAME}" (Lỗi: ${writeErr.message}). Nguyên nhân: Khóa API hiện tại là khóa "anon" (chỉ đọc) hoặc chưa cấp quyền. Khắc phục: Vui lòng vào Supabase Dashboard > Project Settings > API > mục "Project API keys" > bấm Reveal và copy khóa bí mật "service_role" (Secret key).`
+        };
+      }
+
+      // Clean up test file
+      try {
+        await client.storage.from(BUCKET_NAME).remove(['.test_write.txt']);
+      } catch (e) {}
+
       return {
         success: true,
-        message: `Kết nối tới Supabase Storage thành công! Bucket "${BUCKET_NAME}" đã sẵn sàng.`,
+        message: `Kết nối tới Supabase Storage thành công! Bucket "${BUCKET_NAME}" có đầy đủ quyền đọc/ghi.`,
         bucketFound: true,
         bucketName: BUCKET_NAME
       };

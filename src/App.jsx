@@ -4,6 +4,7 @@ import LoginModal from './components/LoginModal';
 import CreateTaskModal from './components/CreateTaskModal';
 import TaskDetailModal from './components/TaskDetailModal';
 import UserProfileModal from './components/UserProfileModal';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import DashboardView from './views/DashboardView';
 import TasksView from './views/TasksView';
@@ -90,50 +91,52 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 min-h-[75vh]">
-        {activeTab === 'dashboard' && (
-          <DashboardView
-            user={currentUser}
-            onSelectTask={(id) => setSelectedTaskId(id)}
-            onOpenCreateTask={() => setIsCreateOpen(true)}
-            onViewTasksTab={handleViewTasksTab}
-            refreshTrigger={refreshKey}
-          />
-        )}
+        <ErrorBoundary>
+          {activeTab === 'dashboard' && (
+            <DashboardView
+              user={currentUser}
+              onSelectTask={(id) => setSelectedTaskId(id)}
+              onOpenCreateTask={() => setIsCreateOpen(true)}
+              onViewTasksTab={handleViewTasksTab}
+              refreshTrigger={refreshKey}
+            />
+          )}
 
-        {activeTab === 'tasks' && (
-          <TasksView
-            user={currentUser}
-            initialScope={tasksScope}
-            onSelectTask={(id) => setSelectedTaskId(id)}
-            onOpenCreateTask={() => setIsCreateOpen(true)}
-            refreshTrigger={refreshKey}
-          />
-        )}
+          {activeTab === 'tasks' && (
+            <TasksView
+              user={currentUser}
+              initialScope={tasksScope}
+              onSelectTask={(id) => setSelectedTaskId(id)}
+              onOpenCreateTask={() => setIsCreateOpen(true)}
+              refreshTrigger={refreshKey}
+            />
+          )}
 
-        {activeTab === 'stats' && (
-          <StatsView
-            user={currentUser}
-            refreshTrigger={refreshKey}
-          />
-        )}
+          {activeTab === 'stats' && (
+            <StatsView
+              user={currentUser}
+              refreshTrigger={refreshKey}
+            />
+          )}
 
-        {isAdmin && activeTab === 'users' && (
-          <UsersView
-            currentUser={currentUser}
-          />
-        )}
+          {isAdmin && activeTab === 'users' && (
+            <UsersView
+              currentUser={currentUser}
+            />
+          )}
 
-        {isAdmin && activeTab === 'zalo' && (
-          <ZaloView
-            currentUser={currentUser}
-          />
-        )}
+          {isAdmin && activeTab === 'zalo' && (
+            <ZaloView
+              currentUser={currentUser}
+            />
+          )}
 
-        {isAdmin && activeTab === 'supabase' && (
-          <SupabaseView
-            currentUser={currentUser}
-          />
-        )}
+          {isAdmin && activeTab === 'supabase' && (
+            <SupabaseView
+              currentUser={currentUser}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Footer */}

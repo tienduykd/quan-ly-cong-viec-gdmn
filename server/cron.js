@@ -180,7 +180,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
         .replace(/{so_viec_qua_han}/g, overdueTasks.length.toString())
         .replace(/{danh_sach_viec_qua_han}/g, overdueListText);
 
-      // Send to Group via Personal Zalo Bot
+      // 1. Send to Group via Personal Zalo Bot
       if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
         try {
           const personalRes = await zaloPersonalService.sendMessage(groupMsg);
@@ -190,6 +190,27 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
         } catch (err) {
           console.error('[CRON] Lỗi gửi qua Zalo cá nhân vào nhóm:', err.message);
         }
+      }
+
+      // 2. Send to Group via Webhook (Telegram / Discord / Lark / Make)
+      try {
+        const webhookSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_webhook_url');
+        const enabledSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_enabled');
+        if (webhookSetting && webhookSetting.value && enabledSetting && enabledSetting.value === '1') {
+          const whRes = await postToWebhook(webhookSetting.value, groupMsg);
+          db.prepare(`
+            INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+            VALUES ('daily_digest', 'webhook_group', ?, 'success', ?)
+          `).run(groupMsg, JSON.stringify(whRes.data || {}));
+          zaloResult.sent = true;
+          zaloResult.note = (zaloResult.note ? zaloResult.note + ' | ' : '') + 'Đã gửi bản tin tới Webhook (Telegram/Nhóm).';
+        }
+      } catch (whErr) {
+        console.error('[CRON] Lỗi gửi Webhook vào nhóm:', whErr.message);
+        db.prepare(`
+          INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+          VALUES ('daily_digest', 'webhook_group', ?, 'failed', ?)
+        `).run(groupMsg, whErr.message);
       }
     }
 

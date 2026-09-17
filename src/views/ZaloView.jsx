@@ -35,6 +35,7 @@ export default function ZaloView({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [triggeringPersonal, setTriggeringPersonal] = useState(false);
   const [triggeringGroup, setTriggeringGroup] = useState(false);
+  const [triggeringWebhook, setTriggeringWebhook] = useState(false);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -170,6 +171,28 @@ export default function ZaloView({ currentUser }) {
       } else {
         setTriggeringPersonal(false);
       }
+    }
+  };
+
+  const handleTriggerWebhookDigest = async () => {
+    setTriggeringWebhook(true);
+    setMessage('');
+    setError('');
+    try {
+      const res = await apiRequest('/zalo/trigger-digest', {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'manual_group' })
+      });
+      if (res.success) {
+        setMessage(`Đã gửi thành công! (${res.dueCount} việc đến hạn, ${res.overdueCount} việc quá hạn). Ghi chú: ${res.zaloResult?.note || ''}`);
+        loadZaloSettings();
+      } else {
+        setError('Gửi thất bại: ' + (res.error || 'Vui lòng kiểm tra lại Webhook.'));
+      }
+    } catch (err) {
+      setError('Lỗi gửi: ' + err.message);
+    } finally {
+      setTriggeringWebhook(false);
     }
   };
 
@@ -1062,12 +1085,12 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                   </p>
                   <button
                     type="button"
-                    onClick={handleTriggerDigest}
-                    disabled={triggering}
+                    onClick={handleTriggerWebhookDigest}
+                    disabled={triggeringWebhook}
                     className="w-full py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2"
                   >
                     <Send className="w-4 h-4" />
-                    {triggering ? 'Đang gửi bản tin...' : 'Gửi ngay bản tin điểm việc hôm nay'}
+                    {triggeringWebhook ? 'Đang gửi bản tin...' : 'Gửi ngay bản tin điểm việc hôm nay'}
                   </button>
                 </div>
               )}

@@ -4,6 +4,7 @@ const axios = require('axios');
 const db = require('../db');
 const { authMiddleware, adminOnly } = require('../auth');
 const { sendDailyDigest } = require('../cron');
+const { postToWebhook } = require('../webhookHelper');
 
 // GET /api/zalo/settings
 router.get('/settings', authMiddleware, (req, res) => {
@@ -57,11 +58,7 @@ router.post('/test-message', authMiddleware, adminOnly, async (req, res) => {
   const content = message || '🔔 [TEST THÔNG BÁO] Kết nối thành công từ Hệ thống Quản lý công việc - Ngành GDMN!';
 
   try {
-    const response = await axios.post(targetUrl, {
-      text: content,
-      message: content,
-      timestamp: Date.now()
-    }, { timeout: 8000 });
+    const response = await postToWebhook(targetUrl, content);
 
     db.prepare(`
       INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Calendar,
@@ -20,7 +20,7 @@ import {
   Trash2,
   Search
 } from 'lucide-react';
-import { apiRequest } from '../api';
+import { apiRequest, formatVietnamDateTime } from '../api';
 
 export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, onTaskUpdated }) {
   const [task, setTask] = useState(null);
@@ -29,6 +29,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   const [newComment, setNewComment] = useState('');
   const [commentProgress, setCommentProgress] = useState('');
   const [allUsers, setAllUsers] = useState([]);
+  const commentsEndRef = useRef(null);
 
   // Edit Mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -76,9 +77,9 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, showTransferDialog, showKpiDialog, isEditing, onClose]);
 
-  const fetchTaskDetails = async () => {
+  const fetchTaskDetails = async (silent = false) => {
     if (!taskId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const data = await apiRequest(`/tasks/${taskId}`);
       setTask(data);
@@ -86,7 +87,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -144,7 +145,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
         })
       });
       setIsEditing(false);
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert('Lỗi lưu chỉnh sửa: ' + err.message);
@@ -158,7 +159,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
     if (!window.confirm(`Bạn có chắc muốn xóa tệp "${originalName}"?`)) return;
     try {
       await apiRequest(`/tasks/${taskId}/attachments/${attId}`, { method: 'DELETE' });
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert('Lỗi khi xóa tệp: ' + err.message);
@@ -179,8 +180,13 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
         })
       });
       setNewComment('');
-      fetchTaskDetails();
+      await fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
+      setTimeout(() => {
+        if (commentsEndRef.current) {
+          commentsEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 100);
     } catch (err) {
       alert(err.message);
     }
@@ -200,7 +206,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
           status: newStatus
         })
       });
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -214,7 +220,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
         method: 'PUT',
         body: JSON.stringify({ status: newStatus })
       });
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -240,7 +246,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
       alert('Đã gửi đề xuất chuyển giao! Người giao việc sẽ nhận được thông báo để phê duyệt.');
       setShowTransferDialog(false);
       setTransferReason('');
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -259,7 +265,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
       });
       alert(approved ? 'Đã phê duyệt chuyển giao thành công!' : 'Đã từ chối đề xuất chuyển giao.');
       setReviewNote('');
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -280,7 +286,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
       });
       alert('Đã nghiệm thu và đánh giá hiệu suất thành công!');
       setShowKpiDialog(false);
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -305,7 +311,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
 
       alert('Tải lên tệp kết quả thành công!');
       setResultFiles([]);
-      fetchTaskDetails();
+      fetchTaskDetails(true);
       if (onTaskUpdated) onTaskUpdated();
     } catch (err) {
       alert(err.message);
@@ -923,8 +929,8 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                     <div key={c.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-slate-800">{c.author_name}</span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(c.created_at).toLocaleString('vi-VN')}
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatVietnamDateTime(c.created_at)}
                         </span>
                       </div>
                       <p className="text-slate-700 whitespace-pre-wrap">{c.comment}</p>
@@ -933,6 +939,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                 ) : (
                   <p className="text-xs text-slate-400 italic">Chưa có bình luận nào.</p>
                 )}
+                <div ref={commentsEndRef} />
               </div>
 
               {/* Add Comment Input */}

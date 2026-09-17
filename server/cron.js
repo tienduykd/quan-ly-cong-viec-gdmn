@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const axios = require('axios');
 const db = require('./db');
+const { postToWebhook } = require('./webhookHelper');
 
 // Function to generate and send daily digest
 async function sendDailyDigest(triggerType = 'cron') {
@@ -90,27 +91,23 @@ async function sendDailyDigest(triggerType = 'cron') {
 
     if (webhookSetting && webhookSetting.value && enabledSetting && enabledSetting.value === '1') {
       try {
-        // Send to Zalo Webhook (or general webhook bot)
-        const response = await axios.post(webhookSetting.value, {
-          text: message,
-          message: message,
-          timestamp: Date.now()
-        }, { timeout: 8000 });
+        // Send to Webhook (Zalo, Telegram, Discord, Lark, Slack, etc.)
+        const response = await postToWebhook(webhookSetting.value, message);
 
         db.prepare(`
           INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
           VALUES (?, ?, ?, ?, ?)
         `).run(triggerType, 'group_webhook', message, 'success', JSON.stringify(response.data || {}));
 
-        zaloResult = { sent: true, note: 'Đã gửi thành công tin nhắn đến Zalo Group Webhook.' };
+        zaloResult = { sent: true, note: 'Đã gửi thành công tin nhắn đến Group Webhook.' };
       } catch (err) {
-        console.error('Lỗi khi gửi webhook Zalo:', err.message);
+        console.error('Lỗi khi gửi webhook:', err.message);
         db.prepare(`
           INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
           VALUES (?, ?, ?, ?, ?)
         `).run(triggerType, 'group_webhook', message, 'failed', err.message);
 
-        zaloResult = { sent: false, error: err.message, note: 'Không thể kết nối đến Webhook Zalo URL.' };
+        zaloResult = { sent: false, error: err.message, note: 'Không thể kết nối đến Webhook URL.' };
       }
     } else {
       // Record log as simulation / ready
@@ -133,18 +130,14 @@ async function sendDailyDigest(triggerType = 'cron') {
   }
 }
 
-// Function to send arbitrary Zalo message via webhook
+// Function to send arbitrary message via webhook
 async function sendZaloMessage(content, messageType = 'task_event', recipient = 'group_webhook') {
   try {
     const webhookSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_webhook_url');
     const enabledSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_enabled');
 
     if (webhookSetting && webhookSetting.value && enabledSetting && enabledSetting.value === '1') {
-      const response = await axios.post(webhookSetting.value, {
-        text: content,
-        message: content,
-        timestamp: Date.now()
-      }, { timeout: 8000 });
+      const response = await postToWebhook(webhookSetting.value, content);
 
       db.prepare(`
         INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
@@ -159,7 +152,7 @@ async function sendZaloMessage(content, messageType = 'task_event', recipient = 
       return { sent: false, note: 'Webhook chưa kích hoạt' };
     }
   } catch (err) {
-    console.error('Lỗi gửi Zalo:', err.message);
+    console.error('Lỗi gửi Webhook:', err.message);
     db.prepare(`
       INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
       VALUES (?, ?, ?, 'failed', ?)

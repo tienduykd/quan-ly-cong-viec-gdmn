@@ -64,3 +64,28 @@ export async function apiRequest(endpoint, options = {}) {
 
   return data;
 }
+
+export function formatVietnamDateTime(dateStr) {
+  if (!dateStr) return '';
+  let s = String(dateStr).trim();
+  // If string is sqlite timestamp like "2026-09-17 02:33:31", parse as UTC
+  if (!s.endsWith('Z') && !s.includes('+')) {
+    if (s.includes(' ')) {
+      s = s.replace(' ', 'T') + 'Z';
+    } else if (s.includes('T')) {
+      s = s + 'Z';
+    }
+  }
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleString('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}

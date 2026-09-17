@@ -14,7 +14,7 @@ import {
   Check,
   ChevronDown
 } from 'lucide-react';
-import { apiRequest } from '../api';
+import { apiRequest, formatVietnamDateTime } from '../api';
 
 export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpenCreateTask, onOpenProfile }) {
   const [notifications, setNotifications] = useState([]);
@@ -205,7 +205,7 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
                             <p className="text-xs font-semibold text-slate-800">{n.title}</p>
                             <p className="text-[12px] text-slate-600 mt-0.5 line-clamp-2">{n.message}</p>
                             <span className="text-[10px] text-slate-400 mt-1 block">
-                              {new Date(n.created_at).toLocaleString('vi-VN')}
+                              {formatVietnamDateTime(n.created_at)}
                             </span>
                           </div>
                         </div>

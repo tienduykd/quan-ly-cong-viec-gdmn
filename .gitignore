@@ -13,3 +13,6 @@ yarn-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Zalo personal session
+server/zalo_session.json

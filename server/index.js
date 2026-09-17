@@ -14,6 +14,8 @@ const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const zaloRoutes = require('./routes/zaloRoutes');
+const zaloPersonalRoutes = require('./routes/zaloPersonalRoutes');
+const zaloPersonalService = require('./zaloPersonalService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,6 +39,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/zalo', zaloRoutes);
+app.use('/api/zalo-personal', zaloPersonalRoutes);
 
 // Health check & Anti-Sleep Ping
 app.get(['/ping', '/api/ping', '/api/health'], (req, res) => {
@@ -62,6 +65,11 @@ startCronJobs();
 
 // Start anti-sleep keep alive worker for cloud deployment
 startKeepAlive();
+
+// Initialize personal Zalo bot session if saved
+zaloPersonalService.init().catch(err => {
+  console.error('[ZALO-PERSONAL] Khởi tạo thất bại:', err.message);
+});
 
 // Listen
 app.listen(PORT, () => {

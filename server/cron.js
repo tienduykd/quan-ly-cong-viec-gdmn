@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const axios = require('axios');
 const db = require('./db');
 const { postToWebhook } = require('./webhookHelper');
+const zaloPersonalService = require('./zaloPersonalService');
 
 // Function to generate and send daily digest
 async function sendDailyDigest(triggerType = 'cron') {
@@ -83,11 +84,23 @@ async function sendDailyDigest(triggerType = 'cron') {
       }
     });
 
-    // Check Zalo Webhook setting
+    let zaloResult = { sent: false, note: 'Chưa cấu hình Zalo cá nhân hoặc Webhook.' };
+
+    // 1. Send via Personal Zalo Bot if logged in and enabled
+    if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
+      try {
+        const personalRes = await zaloPersonalService.sendMessage(message);
+        if (personalRes.sent) {
+          zaloResult = { sent: true, note: 'Đã gửi thành công qua Bot Zalo Cá nhân vào Nhóm GDMN.' };
+        }
+      } catch (err) {
+        console.error('[CRON] Lỗi gửi qua Zalo cá nhân:', err.message);
+      }
+    }
+
+    // 2. Check Zalo Webhook setting & send if configured
     const webhookSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_webhook_url');
     const enabledSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_enabled');
-
-    let zaloResult = { sent: false, note: 'Zalo Webhook chưa cấu hình hoặc chưa kích hoạt.' };
 
     if (webhookSetting && webhookSetting.value && enabledSetting && enabledSetting.value === '1') {
       try {
@@ -107,14 +120,10 @@ async function sendDailyDigest(triggerType = 'cron') {
           VALUES (?, ?, ?, ?, ?)
         `).run(triggerType, 'group_webhook', message, 'failed', err.message);
 
-        zaloResult = { sent: false, error: err.message, note: 'Không thể kết nối đến Webhook URL.' };
+        if (!zaloResult.sent) {
+          zaloResult = { sent: false, error: err.message, note: 'Không thể kết nối đến Webhook URL.' };
+        }
       }
-    } else {
-      // Record log as simulation / ready
-      db.prepare(`
-        INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(triggerType, 'simulated_or_pending_webhook', message, 'success', 'Webhook chưa kích hoạt, bản tin đã được tạo và lưu log thành công.');
     }
 
     return {
@@ -130,8 +139,19 @@ async function sendDailyDigest(triggerType = 'cron') {
   }
 }
 
-// Function to send arbitrary message via webhook
+// Function to send arbitrary message via personal Zalo bot and/or webhook
 async function sendZaloMessage(content, messageType = 'task_event', recipient = 'group_webhook') {
+  let sentAny = false;
+
+  // 1. Send via Personal Zalo Bot
+  if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
+    try {
+      const personalRes = await zaloPersonalService.sendMessage(content);
+      if (personalRes.sent) sentAny = true;
+    } catch (e) {}
+  }
+
+  // 2. Send via Webhook
   try {
     const webhookSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_webhook_url');
     const enabledSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_enabled');
@@ -143,13 +163,7 @@ async function sendZaloMessage(content, messageType = 'task_event', recipient = 
         INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
         VALUES (?, ?, ?, 'success', ?)
       `).run(messageType, recipient, content, JSON.stringify(response.data || {}));
-      return { sent: true };
-    } else {
-      db.prepare(`
-        INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
-        VALUES (?, ?, ?, 'success', 'Webhook chưa kích hoạt, đã lưu thông báo vào nhật ký.')
-      `).run(messageType, recipient, content);
-      return { sent: false, note: 'Webhook chưa kích hoạt' };
+      sentAny = true;
     }
   } catch (err) {
     console.error('Lỗi gửi Webhook:', err.message);
@@ -157,8 +171,9 @@ async function sendZaloMessage(content, messageType = 'task_event', recipient = 
       INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
       VALUES (?, ?, ?, 'failed', ?)
     `).run(messageType, recipient, content, err.message);
-    return { sent: false, error: err.message };
   }
+
+  return { sent: sentAny };
 }
 
 // Function to notify all stakeholders (Assigner, Assignee, Followers) on any task change

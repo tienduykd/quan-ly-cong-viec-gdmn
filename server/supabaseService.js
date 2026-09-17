@@ -1,0 +1,257 @@
+﻿const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
+const fs = require('fs');
+
+const BUCKET_NAME = process.env.SUPABASE_BUCKET || 'gdmn-database';
+const DB_FILE = path.join(__dirname, '..', 'data', 'quanlycongviec.sqlite');
+const SESSION_FILE = path.join(__dirname, 'zalo_session.json');
+
+class SupabaseService {
+  constructor() {
+    this.client = null;
+    this.url = process.env.SUPABASE_URL || '';
+    this.key = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+    this.status = 'unconfigured';
+    this.lastSyncAt = null;
+    this.lastSyncError = null;
+    this.lastSyncAction = null;
+    this.debounceTimer = null;
+    this.isSyncing = false;
+    this.backupInterval = null;
+  }
+
+  init(dbInstance = null) {
+    if (!this.url || !this.key) {
+      if (dbInstance) {
+        try {
+          const urlRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_url');
+          if (urlRow && urlRow.value) this.url = urlRow.value;
+          const keyRow = dbInstance.prepare('SELECT value FROM settings WHERE key = ?').get('supabase_key');
+          if (keyRow && keyRow.value) this.key = keyRow.value;
+        } catch (e) {}
+      }
+    }
+
+    if (this.url && this.key) {
+      try {
+        this.client = createClient(this.url.trim(), this.key.trim(), {
+          auth: { persistSession: false }
+        });
+        this.status = 'configured';
+        console.log('[SUPABASE] Đã cấu hình Supabase Client với URL:', this.url);
+
+        if (!this.backupInterval) {
+          this.backupInterval = setInterval(() => {
+            if (this.client) {
+              this.pushToSupabase().catch(e => console.error('[SUPABASE-CRON]', e.message));
+            }
+          }, 10 * 60 * 1000);
+        }
+      } catch (err) {
+        this.status = 'error';
+        this.lastSyncError = err.message;
+        console.error('[SUPABASE] Lỗi khởi tạo client:', err.message);
+      }
+    } else {
+      this.status = 'unconfigured';
+      console.log('[SUPABASE] Chưa cấu hình SUPABASE_URL hoặc SUPABASE_KEY.');
+    }
+  }
+
+  async testConnection(testUrl = null, testKey = null) {
+    const url = (testUrl || this.url || '').trim();
+    const key = (testKey || this.key || '').trim();
+    if (!url || !key) {
+      return { success: false, error: 'Vui lòng cung cấp SUPABASE_URL và SUPABASE_KEY.' };
+    }
+
+    try {
+      const client = createClient(url, key, { auth: { persistSession: false } });
+      const { data: buckets, error } = await client.storage.listBuckets();
+      if (error) {
+        return { success: false, error: `Supabase trả về lỗi: ${error.message}` };
+      }
+
+      let bucketFound = buckets?.some(b => b.name === BUCKET_NAME);
+      if (!bucketFound) {
+        try {
+          const { error: createErr } = await client.storage.createBucket(BUCKET_NAME, { public: false });
+          if (!createErr) bucketFound = true;
+        } catch (bErr) {
+          console.warn('[SUPABASE] Không thể tự tạo bucket:', bErr.message);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Kết nối tới Supabase thành công!',
+        bucketFound: !!bucketFound,
+        bucketName: BUCKET_NAME,
+        bucketsCount: buckets?.length || 0
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async pullFromSupabase() {
+    if (!this.client) return false;
+    try {
+      console.log(`[SUPABASE] Đang kiểm tra bản sao lưu từ bucket "${BUCKET_NAME}"...`);
+      const { data: files, error } = await this.client.storage.from(BUCKET_NAME).list();
+      if (error) {
+        console.error('[SUPABASE] Lỗi kiểm tra bucket:', error.message);
+        this.lastSyncError = error.message;
+        return false;
+      }
+
+      let restoredDb = false;
+      const dbFile = files?.find(f => f.name === 'quanlycongviec.sqlite');
+      if (dbFile) {
+        console.log(`[SUPABASE] Tìm thấy bản CSDL trên Cloud (${(dbFile.metadata?.size ? (dbFile.metadata.size / 1024).toFixed(1) : '---')} KB), đang tải về...`);
+        const { data: blob, error: dlErr } = await this.client.storage.from(BUCKET_NAME).download('quanlycongviec.sqlite');
+        if (!dlErr && blob) {
+          const buffer = Buffer.from(await blob.arrayBuffer());
+          const dataDir = path.dirname(DB_FILE);
+          if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+          fs.writeFileSync(DB_FILE, buffer);
+          console.log('[SUPABASE] Khôi phục CSDL quanlycongviec.sqlite thành công!');
+          restoredDb = true;
+        }
+      }
+
+      const sessionFile = files?.find(f => f.name === 'zalo_session.json');
+      if (sessionFile) {
+        console.log('[SUPABASE] Tìm thấy phiên Zalo trên Cloud, đang tải về...');
+        const { data: sBlob, error: sErr } = await this.client.storage.from(BUCKET_NAME).download('zalo_session.json');
+        if (!sErr && sBlob) {
+          const buffer = Buffer.from(await sBlob.arrayBuffer());
+          fs.writeFileSync(SESSION_FILE, buffer);
+          console.log('[SUPABASE] Khôi phục phiên zalo_session.json thành công!');
+        }
+      }
+
+      this.lastSyncAt = new Date().toISOString();
+      this.lastSyncAction = 'pull';
+      this.status = 'connected';
+      return restoredDb;
+    } catch (err) {
+      console.error('[SUPABASE] Lỗi khi kéo dữ liệu từ Supabase:', err.message);
+      this.lastSyncError = err.message;
+      return false;
+    }
+  }
+
+  async pushToSupabase() {
+    if (!this.client) return { success: false, error: 'Chưa cấu hình Supabase.' };
+    if (this.isSyncing) return { success: true, syncing: true };
+
+    this.isSyncing = true;
+    try {
+      console.log(`[SUPABASE] Đang đồng bộ CSDL và phiên Zalo lên bucket "${BUCKET_NAME}"...`);
+
+      try {
+        const { data: buckets } = await this.client.storage.listBuckets();
+        const hasBucket = buckets?.some(b => b.name === BUCKET_NAME);
+        if (!hasBucket) {
+          await this.client.storage.createBucket(BUCKET_NAME, { public: false });
+        }
+      } catch (e) {}
+
+      if (fs.existsSync(DB_FILE)) {
+        const dbBuffer = fs.readFileSync(DB_FILE);
+        const { error: dbErr } = await this.client.storage.from(BUCKET_NAME).upload('quanlycongviec.sqlite', dbBuffer, {
+          upsert: true,
+          contentType: 'application/x-sqlite3'
+        });
+        if (dbErr) {
+          console.error('[SUPABASE] Lỗi upload DB:', dbErr.message);
+        } else {
+          console.log('[SUPABASE] Đã sao lưu quanlycongviec.sqlite lên Supabase thành công!');
+        }
+      }
+
+      if (fs.existsSync(SESSION_FILE)) {
+        const sessionBuffer = fs.readFileSync(SESSION_FILE);
+        const { error: sErr } = await this.client.storage.from(BUCKET_NAME).upload('zalo_session.json', sessionBuffer, {
+          upsert: true,
+          contentType: 'application/json'
+        });
+        if (!sErr) {
+          console.log('[SUPABASE] Đã sao lưu zalo_session.json lên Supabase thành công!');
+        }
+      }
+
+      this.lastSyncAt = new Date().toISOString();
+      this.lastSyncAction = 'push';
+      this.lastSyncError = null;
+      this.status = 'connected';
+      return { success: true, syncedAt: this.lastSyncAt };
+    } catch (err) {
+      console.error('[SUPABASE] Lỗi đẩy dữ liệu lên Supabase:', err.message);
+      this.lastSyncError = err.message;
+      return { success: false, error: err.message };
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  scheduleAutoSync(delayMs = 2500) {
+    if (!this.client) return;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.pushToSupabase().catch(e => console.error('[SUPABASE-AUTO-SYNC]', e.message));
+    }, delayMs);
+  }
+
+  async saveConfig(url, key, dbInstance = null) {
+    this.url = (url || '').trim();
+    this.key = (key || '').trim();
+
+    if (dbInstance) {
+      try {
+        dbInstance.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('supabase_url', this.url);
+        dbInstance.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('supabase_key', this.key);
+      } catch (e) {
+        console.error('[SUPABASE] Lỗi lưu settings vào DB:', e.message);
+      }
+    }
+
+    this.init(dbInstance);
+
+    if (this.client) {
+      const testRes = await this.testConnection();
+      if (testRes.success) {
+        await this.pushToSupabase();
+      }
+      return testRes;
+    }
+
+    return { success: true, message: 'Đã lưu cấu hình Supabase.' };
+  }
+
+  getStatus() {
+    let maskedUrl = '';
+    if (this.url) {
+      try {
+        const u = new URL(this.url);
+        maskedUrl = u.origin;
+      } catch (e) {
+        maskedUrl = this.url.substring(0, 15) + '...';
+      }
+    }
+
+    return {
+      status: this.status,
+      isConfigured: !!(this.url && this.key),
+      url: maskedUrl,
+      bucket: BUCKET_NAME,
+      lastSyncAt: this.lastSyncAt,
+      lastSyncAction: this.lastSyncAction,
+      lastSyncError: this.lastSyncError
+    };
+  }
+}
+
+const supabaseService = new SupabaseService();
+module.exports = supabaseService;

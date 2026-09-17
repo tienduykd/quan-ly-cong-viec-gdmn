@@ -16,6 +16,8 @@ const statsRoutes = require('./routes/statsRoutes');
 const zaloRoutes = require('./routes/zaloRoutes');
 const zaloPersonalRoutes = require('./routes/zaloPersonalRoutes');
 const zaloPersonalService = require('./zaloPersonalService');
+const supabaseRoutes = require('./routes/supabaseRoutes');
+const supabaseService = require('./supabaseService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +26,20 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Automatic Supabase Auto-Sync on any mutating API call
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    if (!req.path.includes('/supabase/')) {
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          supabaseService.scheduleAutoSync(3000);
+        }
+      });
+    }
+  }
+  next();
+});
 
 // Static uploads folder for file attachments
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -40,6 +56,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/zalo', zaloRoutes);
 app.use('/api/zalo-personal', zaloPersonalRoutes);
+app.use('/api/supabase', supabaseRoutes);
 
 // Health check & Anti-Sleep Ping
 app.get(['/ping', '/api/ping', '/api/health'], (req, res) => {
@@ -60,6 +77,13 @@ if (fs.existsSync(distPath)) {
   });
 }
 
+// Initialize Supabase Sync Service
+const db = require('./db');
+supabaseService.init(db);
+supabaseService.pullFromSupabase().catch(err => {
+  console.error('[SUPABASE] Khởi động khôi phục thất bại:', err.message);
+});
+
 // Start background cron scheduler (07:30 daily reminders)
 startCronJobs();
 
@@ -70,6 +94,17 @@ startKeepAlive();
 zaloPersonalService.init().catch(err => {
   console.error('[ZALO-PERSONAL] Khởi tạo thất bại:', err.message);
 });
+
+// Graceful shutdown: flush changes to Supabase before process exits
+const gracefulShutdown = async () => {
+  console.log('[SERVER] Đang dừng máy chủ, đồng bộ CSDL lên Supabase...');
+  try {
+    await supabaseService.pushToSupabase();
+  } catch (e) {}
+  process.exit(0);
+};
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // Listen
 app.listen(PORT, () => {

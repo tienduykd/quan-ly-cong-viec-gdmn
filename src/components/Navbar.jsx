@@ -12,7 +12,8 @@ import {
   User,
   Shield,
   Check,
-  ChevronDown
+  ChevronDown,
+  Database
 } from 'lucide-react';
 import { apiRequest, formatVietnamDateTime } from '../api';
 
@@ -87,6 +88,7 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
     ...(isAdmin ? [
       { id: 'users', label: 'Nhân sự (21)', icon: Users },
       { id: 'zalo', label: 'Cấu hình Zalo', icon: MessageSquare, badge: 'Admin' },
+      { id: 'supabase', label: 'Lưu trữ Cloud', icon: Database, badge: 'Cloud' },
     ] : [])
   ];
 

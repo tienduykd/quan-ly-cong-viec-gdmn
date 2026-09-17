@@ -36,7 +36,7 @@ export default function ZaloView({ currentUser }) {
   const [guideTab, setGuideTab] = useState('telegram');
 
   // Personal Zalo state
-  const [personalStatus, setPersonalStatus] = useState('disconnected');
+  const [personalStatus, setPersonalStatus] = useState('loading');
   const [personalQrImage, setPersonalQrImage] = useState(null);
   const [personalUserInfo, setPersonalUserInfo] = useState(null);
   const [personalGroups, setPersonalGroups] = useState([]);
@@ -59,6 +59,7 @@ export default function ZaloView({ currentUser }) {
       setPersonalEnabled(data.enabled !== false);
     } catch (e) {
       console.error(e);
+      setPersonalStatus('disconnected');
     }
   };
 
@@ -82,10 +83,10 @@ export default function ZaloView({ currentUser }) {
     loadPersonalStatus();
   }, []);
 
-  // Poll for QR scan / confirmation if actively logging in
+  // Poll for QR scan / confirmation if actively logging in or restoring
   useEffect(() => {
     let interval = null;
-    if (personalStatus === 'generating_qr' || personalStatus === 'qr_ready' || personalStatus === 'scanned') {
+    if (['generating_qr', 'qr_ready', 'scanned', 'logging_in', 'restoring'].includes(personalStatus)) {
       interval = setInterval(() => {
         loadPersonalStatus();
       }, 2500);
@@ -346,6 +347,11 @@ export default function ZaloView({ currentUser }) {
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
                     Chờ quét mã QR...
                   </span>
+                ) : personalStatus === 'loading' || personalStatus === 'restoring' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Đang kiểm tra kết nối...
+                  </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
                     Chưa kết nối
@@ -354,8 +360,18 @@ export default function ZaloView({ currentUser }) {
               </div>
             </div>
 
-            {/* If NOT logged in */}
-            {personalStatus !== 'logged_in' ? (
+            {/* If LOADING or RESTORING */}
+            {personalStatus === 'loading' || personalStatus === 'restoring' ? (
+              <div className="p-10 text-center bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
+                <RefreshCw className="w-7 h-7 text-blue-600 animate-spin" />
+                <div>
+                  <p className="font-bold text-slate-800 text-sm">
+                    {personalStatus === 'restoring' ? 'Đang khôi phục kết nối Zalo cá nhân...' : 'Đang kiểm tra trạng thái phiên Zalo...'}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">Hệ thống đang tự động đồng bộ kết nối, vui lòng chờ trong giây lát</p>
+                </div>
+              </div>
+            ) : personalStatus !== 'logged_in' ? (
               <div className="space-y-6">
                 <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-slate-700 leading-relaxed space-y-2">
                   <p className="font-semibold text-blue-900 flex items-center gap-1.5">

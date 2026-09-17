@@ -8,7 +8,7 @@ const SESSION_FILE = path.join(__dirname, 'zalo_session.json');
 class ZaloPersonalService {
   constructor() {
     this.api = null;
-    this.status = 'disconnected'; // 'disconnected' | 'generating_qr' | 'qr_ready' | 'scanned' | 'logged_in' | 'expired' | 'error'
+    this.status = 'disconnected'; // 'disconnected' | 'restoring' | 'generating_qr' | 'qr_ready' | 'scanned' | 'logging_in' | 'logged_in' | 'expired' | 'error'
     this.qrImage = null;
     this.qrExpiresAt = null;
     this.error = null;
@@ -17,38 +17,124 @@ class ZaloPersonalService {
     this.targetGroupId = '';
     this.enabled = true;
     this.currentLoginPromise = null;
+    this.isRestoring = false;
+    this.restorePromise = null;
   }
 
   async init() {
-    // Load settings from DB
+    // Load settings & cached info from DB
     try {
       const groupRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_group_id');
       if (groupRow) this.targetGroupId = groupRow.value;
       const enabledRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_enabled');
       if (enabledRow) this.enabled = enabledRow.value === '1';
+
+      // Load cached user info and groups
+      const userRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_user_info');
+      if (userRow && userRow.value) {
+        try { this.userInfo = JSON.parse(userRow.value); } catch (e) {}
+      }
+      const groupsRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_groups');
+      if (groupsRow && groupsRow.value) {
+        try { this.groups = JSON.parse(groupsRow.value); } catch (e) {}
+      }
     } catch (e) {
       console.error('[ZALO-PERSONAL] Lỗi đọc cài đặt:', e.message);
     }
 
-    // Try to restore session from file
+    // Try to restore session
+    await this.restoreSession();
+  }
+
+  hasSavedSession() {
+    try {
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_session');
+      if (row && row.value && row.value.trim().length > 10) return true;
+    } catch (e) {}
     if (fs.existsSync(SESSION_FILE)) {
       try {
+        const stats = fs.statSync(SESSION_FILE);
+        if (stats.size > 10) return true;
+      } catch (e) {}
+    }
+    return false;
+  }
+
+  async restoreSession() {
+    if (this.status === 'logged_in' && this.api) return true;
+    if (this.isRestoring) {
+      return this.restorePromise;
+    }
+
+    this.isRestoring = true;
+    this.restorePromise = (async () => {
+      try {
+        let sessionData = null;
+
+        // 1. Try DB first (persists on container restarts)
+        try {
+          const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_personal_session');
+          if (row && row.value) {
+            sessionData = JSON.parse(row.value);
+          }
+        } catch (e) {
+          console.error('[ZALO-PERSONAL] Lỗi đọc session từ DB:', e.message);
+        }
+
+        // 2. Try file if DB didn't have it
+        if (!sessionData && fs.existsSync(SESSION_FILE)) {
+          try {
+            const raw = fs.readFileSync(SESSION_FILE, 'utf8');
+            if (raw && raw.trim()) {
+              sessionData = JSON.parse(raw);
+              // Backfill DB from file
+              try {
+                db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_session', raw);
+              } catch (e) {}
+            }
+          } catch (e) {
+            console.error('[ZALO-PERSONAL] Lỗi đọc session từ file:', e.message);
+          }
+        }
+
+        if (!sessionData || !sessionData.cookie) {
+          console.log('[ZALO-PERSONAL] Chưa có phiên đăng nhập Zalo cá nhân.');
+          this.status = 'disconnected';
+          return false;
+        }
+
         console.log('[ZALO-PERSONAL] Tìm thấy phiên đăng nhập đã lưu, đang khôi phục kết nối...');
-        const sessionData = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
+        this.status = 'restoring';
+
         const zalo = new Zalo({ logging: false });
-        this.api = await zalo.loginCookie(sessionData);
+        // NOTE: zca-js expects zalo.login(credentials), where credentials is { cookie, imei, userAgent }
+        this.api = await zalo.login(sessionData);
         this.status = 'logged_in';
         console.log('[ZALO-PERSONAL] Khôi phục phiên Zalo cá nhân thành công!');
-        await this.loadAccountInfo();
-        await this.loadGroups();
+
+        // Sync back to file if missing
+        if (!fs.existsSync(SESSION_FILE)) {
+          try {
+            fs.writeFileSync(SESSION_FILE, JSON.stringify(sessionData, null, 2), 'utf8');
+          } catch (e) {}
+        }
+
+        // Refresh account info & groups in background
+        this.loadAccountInfo().catch(e => console.error('[ZALO-PERSONAL] AccountInfo refresh:', e.message));
+        this.loadGroups().catch(e => console.error('[ZALO-PERSONAL] Groups refresh:', e.message));
+
+        return true;
       } catch (err) {
         console.error('[ZALO-PERSONAL] Khôi phục phiên Zalo thất bại (có thể session hết hạn):', err.message);
         this.status = 'disconnected';
         this.api = null;
+        return false;
+      } finally {
+        this.isRestoring = false;
       }
-    } else {
-      console.log('[ZALO-PERSONAL] Chưa có phiên đăng nhập Zalo cá nhân.');
-    }
+    })();
+
+    return this.restorePromise;
   }
 
   async loadAccountInfo() {
@@ -62,6 +148,9 @@ class ZaloPersonalService {
         avatar: profile.avatar || ''
       };
       console.log('[ZALO-PERSONAL] Đã tải thông tin tài khoản:', this.userInfo.name, 'UID:', this.userInfo.uid);
+      try {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_user_info', JSON.stringify(this.userInfo));
+      } catch (e) {}
     } catch (e) {
       console.error('[ZALO-PERSONAL] Lỗi tải thông tin tài khoản:', e.message);
       if (!this.userInfo) {
@@ -126,6 +215,9 @@ class ZaloPersonalService {
       }
 
       console.log(`[ZALO-PERSONAL] Đã đồng bộ ${this.groups.length} nhóm Zalo.`);
+      try {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_groups', JSON.stringify(this.groups));
+      } catch (e) {}
       return this.groups;
     } catch (e) {
       console.error('[ZALO-PERSONAL] Lỗi tải danh sách nhóm:', e.message);
@@ -165,10 +257,12 @@ class ZaloPersonalService {
         } else if (event.type === LoginQRCallbackEventType.GotLoginInfo) {
           this.status = 'logging_in';
           try {
-            fs.writeFileSync(SESSION_FILE, JSON.stringify(event.data, null, 2), 'utf8');
-            console.log('[ZALO-PERSONAL] Đã lưu thông tin phiên vào', SESSION_FILE);
+            const dataStr = JSON.stringify(event.data, null, 2);
+            fs.writeFileSync(SESSION_FILE, dataStr, 'utf8');
+            db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('zalo_personal_session', dataStr);
+            console.log('[ZALO-PERSONAL] Đã lưu thông tin phiên vào File và SQLite DB.');
           } catch (err) {
-            console.error('[ZALO-PERSONAL] Lỗi ghi file session:', err.message);
+            console.error('[ZALO-PERSONAL] Lỗi ghi file/db session:', err.message);
           }
         }
       }
@@ -209,6 +303,9 @@ class ZaloPersonalService {
         fs.unlinkSync(SESSION_FILE);
       } catch (e) {}
     }
+    try {
+      db.prepare("DELETE FROM settings WHERE key IN ('zalo_personal_session', 'zalo_personal_user_info', 'zalo_personal_groups')").run();
+    } catch (e) {}
     return { success: true };
   }
 
@@ -330,6 +427,7 @@ class ZaloPersonalService {
   getStatus() {
     return {
       status: this.status,
+      hasSavedSession: this.hasSavedSession(),
       qrImage: this.qrImage,
       qrExpiresAt: this.qrExpiresAt,
       error: this.error,

@@ -5,6 +5,11 @@ const { authMiddleware, adminOnly } = require('../auth');
 
 // GET /api/zalo-personal/status
 router.get('/status', authMiddleware, async (req, res) => {
+  // If disconnected but a saved session exists, auto-restore before replying
+  if (zaloPersonalService.status === 'disconnected' && zaloPersonalService.hasSavedSession()) {
+    console.log('[ROUTE /status] Phát hiện phiên Zalo đã lưu, đang tự động khôi phục kết nối...');
+    await zaloPersonalService.restoreSession();
+  }
   const status = zaloPersonalService.getStatus();
   res.json(status);
 });

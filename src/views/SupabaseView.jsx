@@ -262,7 +262,7 @@ export default function SupabaseView({ currentUser }) {
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                 <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                SUPABASE_KEY (API Key / anon hoặc service_role):
+                SUPABASE_KEY (Khuyên dùng khóa service_role / Secret):
               </label>
               <input
                 type="password"
@@ -272,8 +272,8 @@ export default function SupabaseView({ currentUser }) {
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-teal-500"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Lấy tại: <strong>Supabase Dashboard &gt; Project Settings &gt; API &gt; anon/public</strong> (hoặc service_role)
+              <p className="text-[11px] text-amber-700 mt-1 font-medium">
+                ⭐ Khuyên dùng khóa <strong>service_role (Secret key)</strong> tại <strong>Project Settings &gt; API</strong> để máy chủ có toàn quyền lưu trữ CSDL mà không bị chặn bởi bảo mật RLS.
               </p>
             </div>
 
@@ -341,32 +341,41 @@ export default function SupabaseView({ currentUser }) {
         <div className="bg-gradient-to-br from-slate-50 to-emerald-50/50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-sm text-xs">
           <div className="flex items-center gap-2 text-slate-900 font-bold">
             <HelpCircle className="w-4 h-4 text-emerald-600" />
-            Hướng dẫn tạo Supabase (Miễn phí)
+            Hướng dẫn thiết lập Supabase (Vĩnh viễn)
           </div>
 
           <ol className="list-decimal list-inside space-y-2.5 text-slate-600 leading-relaxed">
             <li>
-              Truy cập trang chủ <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-emerald-700 font-bold underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="w-3 h-3" /></a> và bấm <strong>Sign in</strong> (có thể đăng nhập bằng tài khoản Google hoặc GitHub).
+              Truy cập trang chủ <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-emerald-700 font-bold underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="w-3 h-3" /></a> và đăng nhập bằng Google hoặc GitHub.
             </li>
             <li>
               Bấm <strong>"New project"</strong>, đặt tên (ví dụ: <code>gdmn-tasks</code>), chọn mật khẩu CSDL bất kỳ và chọn khu vực (Region: <code>Singapore</code>).
             </li>
             <li>
-              Chờ khoảng 1-2 phút để Supabase tạo xong.
+              Chờ khoảng 1-2 phút để Supabase khởi tạo xong.
             </li>
             <li>
-              Vào menu bánh răng <strong>Project Settings</strong> (góc dưới bên trái) &gt; chọn mục <strong>API</strong>.
+              Vào biểu tượng bánh răng <strong>Project Settings</strong> (ở góc dưới bên trái) &gt; chọn mục <strong>API</strong>.
             </li>
             <li>
-              Sao chép <strong>Project URL</strong> và <strong>Project API Keys (anon/public)</strong> rồi dán vào 2 ô bên cạnh và bấm <strong>Lưu cấu hình</strong>.
+              Sao chép <strong>Project URL</strong> và khóa <strong>service_role (Secret key)</strong> rồi dán vào 2 ô bên cạnh và bấm <strong>Lưu cấu hình & Kích hoạt</strong>.
             </li>
           </ol>
 
-          <div className="p-3 bg-white/80 rounded-xl border border-emerald-200/60 text-[11px] text-slate-600 space-y-1">
-            <p className="font-bold text-emerald-900">💡 Gợi ý cho Render:</p>
-            <p>
-              Bạn cũng có thể thêm 2 biến môi trường trên Render: <code>SUPABASE_URL</code> và <code>SUPABASE_KEY</code> trong mục <strong>Environment</strong> của Render để tự động kích hoạt vĩnh viễn.
+          {/* CRITICAL RENDER GUIDE */}
+          <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-300 text-[11px] text-amber-900 space-y-1.5">
+            <p className="font-bold flex items-center gap-1 text-amber-950">
+              <span>⚠️ Đảm bảo vĩnh viễn trên Render:</span>
             </p>
+            <p className="leading-relaxed">
+              Vì Render sử dụng máy chủ tạm thời (sẽ reset CSDL khi cập nhật phiên bản mới), để hệ thống <strong>vĩnh viễn không bao giờ bị mất cấu hình hay phiên Zalo</strong>, hãy thêm 2 biến này vào Render:
+            </p>
+            <ol className="list-decimal list-inside space-y-1 pl-1 text-slate-700 font-mono text-[10px]">
+              <li>Vào <strong>dashboard.render.com</strong> &gt; Chọn dịch vụ</li>
+              <li>Chọn thẻ <strong>Environment</strong> &gt; Add:</li>
+              <li className="font-bold text-slate-900">SUPABASE_URL = [Project URL]</li>
+              <li className="font-bold text-slate-900">SUPABASE_KEY = [Khóa service_role]</li>
+            </ol>
           </div>
         </div>
       </div>

@@ -80,20 +80,31 @@ if (fs.existsSync(distPath)) {
 // Initialize Supabase Sync Service
 const db = require('./db');
 supabaseService.init(db);
-supabaseService.pullFromSupabase().catch(err => {
-  console.error('[SUPABASE] Khởi động khôi phục thất bại:', err.message);
-});
 
-// Start background cron scheduler (07:30 daily reminders)
-startCronJobs();
+(async () => {
+  try {
+    const pulled = await supabaseService.pullFromSupabase();
+    if (pulled) {
+      console.log('[SERVER] Đã đồng bộ khôi phục dữ liệu mới nhất từ Supabase Cloud.');
+    }
+  } catch (err) {
+    console.error('[SUPABASE] Khởi động khôi phục thất bại:', err.message);
+  }
 
-// Start anti-sleep keep alive worker for cloud deployment
-startKeepAlive();
+  // Start background cron scheduler (07:30 daily reminders)
+  startCronJobs();
 
-// Initialize personal Zalo bot session if saved
-zaloPersonalService.init().catch(err => {
-  console.error('[ZALO-PERSONAL] Khởi tạo thất bại:', err.message);
-});
+  // Start anti-sleep keep alive worker for cloud deployment
+  startKeepAlive();
+
+  // Initialize personal Zalo bot session if saved (run AFTER pulling session from Supabase)
+  try {
+    await zaloPersonalService.init();
+    console.log('[ZALO-PERSONAL] Khởi tạo phiên Zalo xong. Trạng thái:', zaloPersonalService.status);
+  } catch (err) {
+    console.error('[ZALO-PERSONAL] Khởi tạo thất bại:', err.message);
+  }
+})();
 
 // Graceful shutdown: flush changes to Supabase before process exits
 const gracefulShutdown = async () => {

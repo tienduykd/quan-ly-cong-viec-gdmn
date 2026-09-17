@@ -1,4 +1,4 @@
-﻿const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const fs = require('fs');
 
@@ -67,27 +67,43 @@ class SupabaseService {
 
     try {
       const client = createClient(url, key, { auth: { persistSession: false } });
-      const { data: buckets, error } = await client.storage.listBuckets();
-      if (error) {
-        return { success: false, error: `Supabase trả về lỗi: ${error.message}` };
-      }
 
-      let bucketFound = buckets?.some(b => b.name === BUCKET_NAME);
-      if (!bucketFound) {
-        try {
-          const { error: createErr } = await client.storage.createBucket(BUCKET_NAME, { public: false });
-          if (!createErr) bucketFound = true;
-        } catch (bErr) {
-          console.warn('[SUPABASE] Không thể tự tạo bucket:', bErr.message);
+      let bucketFound = false;
+      // 1. Try listing buckets (works with service_role key)
+      try {
+        const { data: buckets, error } = await client.storage.listBuckets();
+        if (!error && buckets) {
+          bucketFound = buckets.some(b => b.name === BUCKET_NAME);
+          if (!bucketFound) {
+            const { error: createErr } = await client.storage.createBucket(BUCKET_NAME, { public: false });
+            if (!createErr) bucketFound = true;
+          }
         }
+      } catch (e) {}
+
+      // 2. Direct check on bucket BUCKET_NAME
+      const { data: files, error: listErr } = await client.storage.from(BUCKET_NAME).list('', { limit: 1 });
+      if (listErr) {
+        if (listErr.message?.toLowerCase().includes('not found')) {
+          try {
+            await client.storage.createBucket(BUCKET_NAME, { public: false });
+            bucketFound = true;
+          } catch (e) {}
+        } else {
+          return {
+            success: false,
+            error: `Lỗi truy cập bucket "${BUCKET_NAME}": ${listErr.message}. Khuyến nghị sử dụng khóa "service_role" (Secret key) của Supabase để có đầy đủ quyền lưu trữ CSDL.`
+          };
+        }
+      } else {
+        bucketFound = true;
       }
 
       return {
         success: true,
-        message: 'Kết nối tới Supabase thành công!',
+        message: 'Kết nối tới Supabase Storage thành công!',
         bucketFound: !!bucketFound,
-        bucketName: BUCKET_NAME,
-        bucketsCount: buckets?.length || 0
+        bucketName: BUCKET_NAME
       };
     } catch (err) {
       return { success: false, error: err.message };
@@ -150,6 +166,7 @@ class SupabaseService {
     try {
       console.log(`[SUPABASE] Đang đồng bộ CSDL và phiên Zalo lên bucket "${BUCKET_NAME}"...`);
 
+      // Ensure bucket exists if possible
       try {
         const { data: buckets } = await this.client.storage.listBuckets();
         const hasBucket = buckets?.some(b => b.name === BUCKET_NAME);
@@ -157,6 +174,8 @@ class SupabaseService {
           await this.client.storage.createBucket(BUCKET_NAME, { public: false });
         }
       } catch (e) {}
+
+      let uploadErrors = [];
 
       if (fs.existsSync(DB_FILE)) {
         const dbBuffer = fs.readFileSync(DB_FILE);
@@ -166,6 +185,7 @@ class SupabaseService {
         });
         if (dbErr) {
           console.error('[SUPABASE] Lỗi upload DB:', dbErr.message);
+          uploadErrors.push(`Lỗi lưu CSDL: ${dbErr.message}`);
         } else {
           console.log('[SUPABASE] Đã sao lưu quanlycongviec.sqlite lên Supabase thành công!');
         }
@@ -177,9 +197,18 @@ class SupabaseService {
           upsert: true,
           contentType: 'application/json'
         });
-        if (!sErr) {
+        if (sErr) {
+          console.error('[SUPABASE] Lỗi upload phiên Zalo:', sErr.message);
+          uploadErrors.push(`Lỗi lưu phiên Zalo: ${sErr.message}`);
+        } else {
           console.log('[SUPABASE] Đã sao lưu zalo_session.json lên Supabase thành công!');
         }
+      }
+
+      if (uploadErrors.length > 0) {
+        this.lastSyncError = uploadErrors.join('; ');
+        this.status = 'error';
+        return { success: false, error: this.lastSyncError };
       }
 
       this.lastSyncAt = new Date().toISOString();
@@ -190,6 +219,7 @@ class SupabaseService {
     } catch (err) {
       console.error('[SUPABASE] Lỗi đẩy dữ liệu lên Supabase:', err.message);
       this.lastSyncError = err.message;
+      this.status = 'error';
       return { success: false, error: err.message };
     } finally {
       this.isSyncing = false;
@@ -221,10 +251,14 @@ class SupabaseService {
 
     if (this.client) {
       const testRes = await this.testConnection();
-      if (testRes.success) {
-        await this.pushToSupabase();
+      if (!testRes.success) {
+        return testRes;
       }
-      return testRes;
+      const pushRes = await this.pushToSupabase();
+      if (!pushRes.success) {
+        return { success: false, error: pushRes.error || 'Kết nối thành công nhưng không thể sao lưu CSDL vào bucket. Vui lòng kiểm tra quyền hoặc dùng khóa service_role.' };
+      }
+      return { success: true, message: 'Đã lưu cấu hình và sao lưu CSDL lên Supabase thành công!' };
     }
 
     return { success: true, message: 'Đã lưu cấu hình Supabase.' };

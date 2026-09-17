@@ -146,7 +146,7 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
             {/* Create Task Button */}
             <button
               onClick={onOpenCreateTask}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-teal-600/20 transition active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-teal-600/20 transition active:translate-y-px"
             >
               <PlusCircle className="w-4 h-4" />
               <span className="hidden sm:inline">Giao việc / Thêm việc</span>

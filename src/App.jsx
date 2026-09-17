@@ -88,44 +88,42 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 min-h-[75vh]">
         {activeTab === 'dashboard' && (
           <DashboardView
-            key={`dashboard-${refreshKey}`}
             user={currentUser}
             onSelectTask={(id) => setSelectedTaskId(id)}
             onOpenCreateTask={() => setIsCreateOpen(true)}
             onViewTasksTab={handleViewTasksTab}
+            refreshTrigger={refreshKey}
           />
         )}
 
         {activeTab === 'tasks' && (
           <TasksView
-            key={`tasks-${refreshKey}`}
             user={currentUser}
             initialScope={tasksScope}
             onSelectTask={(id) => setSelectedTaskId(id)}
             onOpenCreateTask={() => setIsCreateOpen(true)}
+            refreshTrigger={refreshKey}
           />
         )}
 
         {activeTab === 'stats' && (
           <StatsView
-            key={`stats-${refreshKey}`}
             user={currentUser}
+            refreshTrigger={refreshKey}
           />
         )}
 
         {isAdmin && activeTab === 'users' && (
           <UsersView
-            key={`users-${refreshKey}`}
             currentUser={currentUser}
           />
         )}
 
         {isAdmin && activeTab === 'zalo' && (
           <ZaloView
-            key={`zalo-${refreshKey}`}
             currentUser={currentUser}
           />
         )}

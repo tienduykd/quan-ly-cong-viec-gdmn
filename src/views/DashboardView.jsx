@@ -27,7 +27,7 @@ import {
 } from 'recharts';
 import { apiRequest } from '../api';
 
-export default function DashboardView({ user, onSelectTask, onOpenCreateTask, onViewTasksTab }) {
+export default function DashboardView({ user, onSelectTask, onOpenCreateTask, onViewTasksTab, refreshTrigger }) {
   const [stats, setStats] = useState(null);
   const [todayTasks, setTodayTasks] = useState([]);
   const [overdueTasks, setOverdueTasks] = useState([]);
@@ -37,8 +37,8 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
 
   const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  const loadDashboardData = async (silent = false) => {
+    if (!silent && !stats) setLoading(true);
     try {
       const [statsData, allTasksData] = await Promise.all([
         apiRequest('/stats/dashboard'),
@@ -66,7 +66,7 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
 
   useEffect(() => {
     loadDashboardData();
-  }, [user]);
+  }, [user, refreshTrigger]);
 
   const handleTriggerZaloDigest = async () => {
     setZaloTriggering(true);
@@ -124,7 +124,7 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
           <div className="flex flex-wrap items-center gap-3 mt-5">
             <button
               onClick={onOpenCreateTask}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-900/30 transition active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-teal-500 hover:bg-teal-400 text-white font-bold text-xs rounded-xl shadow-md shadow-teal-900/30 transition active:translate-y-px"
             >
               <PlusCircle className="w-4 h-4" />
               Giao việc / Thêm việc
@@ -134,7 +134,7 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
               <button
                 onClick={handleTriggerZaloDigest}
                 disabled={zaloTriggering}
-                className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-xs rounded-xl backdrop-blur-sm border border-white/20 transition active:scale-95"
+                className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 text-white font-semibold text-xs rounded-xl backdrop-blur-sm border border-white/20 transition active:translate-y-px"
               >
                 <Send className="w-3.5 h-3.5 text-teal-200" />
                 {zaloTriggering ? 'Đang gửi bản tin...' : 'Gửi nhắc việc hôm nay qua Zalo'}
@@ -143,7 +143,7 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
 
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-md transition active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-md transition active:translate-y-px"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Xuất Báo cáo Excel

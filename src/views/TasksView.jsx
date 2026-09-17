@@ -17,9 +17,10 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../api';
 
-export default function TasksView({ user, onSelectTask, onOpenCreateTask, initialScope }) {
+export default function TasksView({ user, onSelectTask, onOpenCreateTask, initialScope, refreshTrigger }) {
   const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [scope, setScope] = useState(initialScope || 'all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -29,8 +30,12 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
 
   const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
 
-  const loadTasks = async () => {
-    setLoading(true);
+  const loadTasks = async (silent = false) => {
+    if (!silent && tasks.length === 0) {
+      setIsInitialLoading(true);
+    } else {
+      setIsFetching(true);
+    }
     try {
       const params = new URLSearchParams();
       if (scope) params.append('scope', scope);
@@ -44,13 +49,14 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
     } catch (err) {
       console.error('Lỗi khi tải danh sách công việc:', err);
     } finally {
-      setLoading(false);
+      setIsInitialLoading(false);
+      setIsFetching(false);
     }
   };
 
   useEffect(() => {
     loadTasks();
-  }, [scope, statusFilter, categoryFilter, priorityFilter, search, user]);
+  }, [scope, statusFilter, categoryFilter, priorityFilter, search, user, refreshTrigger]);
 
   const getPriorityBadge = (p) => {
     switch (p) {
@@ -227,21 +233,32 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
       </div>
 
       {/* Task List Content */}
-      {loading ? (
-        <div className="p-12 text-center text-slate-400 text-sm">Đang tải danh sách công việc...</div>
-      ) : tasks.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-3">
-            <CheckSquare className="w-6 h-6" />
+      <div className="min-h-[480px] relative">
+        {/* Top fetching progress bar */}
+        {isFetching && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-teal-100 overflow-hidden z-20 rounded-t-2xl">
+            <div className="h-full bg-teal-600 animate-pulse w-full"></div>
           </div>
-          <h3 className="font-bold text-slate-800 text-sm">Không tìm thấy công việc nào</h3>
-          <p className="text-slate-400 text-xs mt-1">
-            Không có công việc nào khớp với bộ lọc hiện tại hoặc bạn chưa được giao việc trong nhóm này.
-          </p>
-        </div>
-      ) : viewMode === 'table' ? (
-        /* TABLE VIEW */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        )}
+
+        {isInitialLoading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center min-h-[480px] flex flex-col items-center justify-center space-y-3 shadow-sm">
+            <div className="w-8 h-8 border-3 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-slate-500 text-xs font-medium">Đang tải danh sách công việc...</span>
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center min-h-[480px] flex flex-col items-center justify-center shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto mb-3">
+              <CheckSquare className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-800 text-sm">Không tìm thấy công việc nào</h3>
+            <p className="text-slate-400 text-xs mt-1">
+              Không có công việc nào khớp với bộ lọc hiện tại hoặc bạn chưa được giao việc trong nhóm này.
+            </p>
+          </div>
+        ) : viewMode === 'table' ? (
+          /* TABLE VIEW */
+          <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[480px] transition-opacity duration-150 ${isFetching ? 'opacity-70' : 'opacity-100'}`}>
           <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-left text-xs relative">
               <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase tracking-wider font-bold shadow-sm">
@@ -401,8 +418,9 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
               </div>
             );
           })}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

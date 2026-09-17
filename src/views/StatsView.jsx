@@ -21,14 +21,14 @@ import {
 } from 'recharts';
 import { apiRequest } from '../api';
 
-export default function StatsView({ user }) {
+export default function StatsView({ user, refreshTrigger }) {
   const [stats, setStats] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [allTasks, setAllTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent && !stats) setLoading(true);
     try {
       const [statsData, usersData, tasksData] = await Promise.all([
         apiRequest('/stats/dashboard'),
@@ -47,7 +47,7 @@ export default function StatsView({ user }) {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleExportExcel = async () => {
     try {
@@ -89,7 +89,7 @@ export default function StatsView({ user }) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-h-[500px]">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -101,7 +101,7 @@ export default function StatsView({ user }) {
 
         <button
           onClick={handleExportExcel}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition active:translate-y-px self-start sm:self-auto"
         >
           <ArrowDownToLine className="w-4 h-4" />
           Xuất Báo cáo Excel đầy đủ (.xlsx)

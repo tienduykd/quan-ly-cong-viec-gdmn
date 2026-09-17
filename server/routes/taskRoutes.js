@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { authMiddleware } = require('../auth');
+const { notifyTaskEvent } = require('../cron');
 
 // Configure multer file upload
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -245,6 +246,16 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
       });
     }
 
+    // Notify via Zalo and In-App
+    if (!isPersonalNum) {
+      notifyTaskEvent(
+        taskId,
+        'Giao việc mới',
+        user.full_name,
+        `Đã tạo và phân công công việc "${title}". Hạn chót: ${due_date}.`
+      );
+    }
+
     res.status(201).json({
       message: 'Tạo công việc thành công!',
       taskId
@@ -331,7 +342,7 @@ router.get('/:id', authMiddleware, (req, res) => {
   });
 });
 
-// PUT /api/tasks/:id - Update progress, status, or basic info
+// PUT /api/tasks/:id - Update progress, status, or full editing
 router.put('/:id', authMiddleware, (req, res) => {
   const taskId = parseInt(req.params.id);
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
@@ -348,7 +359,19 @@ router.put('/:id', authMiddleware, (req, res) => {
     return res.status(403).json({ error: 'Bạn không có quyền cập nhật công việc này.' });
   }
 
-  const { progress, status, title, description, priority, due_date } = req.body;
+  const {
+    progress,
+    status,
+    title,
+    description,
+    category,
+    priority,
+    start_date,
+    due_date,
+    assignee_id,
+    department_id,
+    followers
+  } = req.body;
 
   let newProgress = progress !== undefined ? parseInt(progress) : task.progress;
   let newStatus = status || task.status;
@@ -360,33 +383,77 @@ router.put('/:id', authMiddleware, (req, res) => {
 
   const completedAt = (newStatus === 'completed' && !task.completed_at) ? new Date().toISOString() : task.completed_at;
 
-  // If assigner or admin, allow editing details
-  let newTitle = (isAdmin || isAssigner) && title ? title.trim() : task.title;
-  let newDesc = (isAdmin || isAssigner) && description !== undefined ? description : task.description;
-  let newPriority = (isAdmin || isAssigner) && priority ? priority : task.priority;
-  let newDueDate = (isAdmin || isAssigner) && due_date ? due_date : task.due_date;
+  // If assigner or admin, allow editing full details
+  const canEditFull = isAdmin || isAssigner;
+  let newTitle = canEditFull && title ? title.trim() : task.title;
+  let newDesc = canEditFull && description !== undefined ? description : task.description;
+  let newCat = canEditFull && category ? category : task.category;
+  let newPriority = canEditFull && priority ? priority : task.priority;
+  let newStartDate = canEditFull && start_date ? start_date : task.start_date;
+  let newDueDate = canEditFull && due_date ? due_date : task.due_date;
+  let newAssigneeId = canEditFull && assignee_id ? parseInt(assignee_id) : task.assignee_id;
+  let newDeptId = canEditFull && department_id !== undefined ? (department_id ? parseInt(department_id) : null) : task.department_id;
 
   db.prepare(`
     UPDATE tasks 
-    SET title = ?, description = ?, priority = ?, due_date = ?,
+    SET title = ?, description = ?, category = ?, priority = ?,
+        start_date = ?, due_date = ?, assignee_id = ?, department_id = ?,
         progress = ?, status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(newTitle, newDesc, newPriority, newDueDate, newProgress, newStatus, completedAt, taskId);
+  `).run(
+    newTitle,
+    newDesc,
+    newCat,
+    newPriority,
+    newStartDate,
+    newDueDate,
+    newAssigneeId,
+    newDeptId,
+    newProgress,
+    newStatus,
+    completedAt,
+    taskId
+  );
 
-  // Send notification to assigner if completed or pending approval
-  if (isAssignee && !isAssigner) {
-    if (newStatus === 'pending_approval' || newStatus === 'completed') {
-      db.prepare(`
-        INSERT INTO notifications (user_id, task_id, title, message, type)
-        VALUES (?, ?, ?, ?, 'task_status_changed')
-      `).run(
-        task.assigner_id,
-        taskId,
-        'Báo cáo hoàn thành công việc',
-        `${user.full_name} đã báo cáo hoàn thành công việc "${task.title}". Vui lòng nghiệm thu & đánh giá.`
-      );
+  // Update followers if provided
+  if (canEditFull && followers !== undefined) {
+    let followerIds = [];
+    try {
+      followerIds = typeof followers === 'string' ? JSON.parse(followers) : followers;
+    } catch (e) {
+      followerIds = [followers];
     }
+
+    db.prepare('DELETE FROM task_followers WHERE task_id = ?').run(taskId);
+    const insertFollower = db.prepare('INSERT OR IGNORE INTO task_followers (task_id, user_id) VALUES (?, ?)');
+    followerIds.forEach(fid => {
+      const idNum = parseInt(fid);
+      if (idNum && idNum !== newAssigneeId && idNum !== task.assigner_id) {
+        insertFollower.run(taskId, idNum);
+      }
+    });
   }
+
+  // Determine what changed for the notification
+  let changeDetails = [];
+  if (newTitle !== task.title) changeDetails.push(`Đổi tiêu đề: "${newTitle}"`);
+  if (newProgress !== task.progress) changeDetails.push(`Cập nhật tiến độ: ${newProgress}%`);
+  if (newStatus !== task.status) changeDetails.push(`Đổi trạng thái: ${newStatus}`);
+  if (newAssigneeId !== task.assignee_id) {
+    const newAssUser = db.prepare('SELECT full_name FROM users WHERE id = ?').get(newAssigneeId);
+    changeDetails.push(`Điều chỉnh người xử lý chính: ${newAssUser ? newAssUser.full_name : newAssigneeId}`);
+  }
+  if (newDueDate !== task.due_date) changeDetails.push(`Đổi hạn chót: ${newDueDate}`);
+
+  const changeText = changeDetails.join(', ') || 'Cập nhật nội dung chi tiết công việc';
+
+  // Notify Assigner, Assignee and Followers via Zalo and In-App
+  notifyTaskEvent(
+    taskId,
+    'Cập nhật công việc',
+    user.full_name,
+    changeText
+  );
 
   res.json({ message: 'Cập nhật công việc thành công!' });
 });
@@ -424,8 +491,20 @@ router.post('/:id/comments', authMiddleware, (req, res) => {
     `).run(progressUpdate, newStatus, taskId);
   }
 
+  notifyTaskEvent(
+    taskId,
+    'Trao đổi / Cập nhật tiến độ',
+    req.user.full_name,
+    commentUpdateText(comment.trim(), progressUpdate)
+  );
+
   res.json({ message: 'Đã gửi trao đổi thành công!' });
 });
+
+function commentUpdateText(c, p) {
+  if (p !== null) return `Tiến độ ${p}%: "${c}"`;
+  return `"${c}"`;
+}
 
 // POST /api/tasks/:id/attachments - Upload additional documents or result submission
 router.post('/:id/attachments', authMiddleware, upload.array('files', 10), (req, res) => {
@@ -474,7 +553,55 @@ router.post('/:id/attachments', authMiddleware, upload.array('files', 10), (req,
     );
   }
 
+  notifyTaskEvent(
+    taskId,
+    isResult ? 'Nộp tài liệu kết quả' : 'Đính kèm tài liệu mới',
+    req.user.full_name,
+    `Đã tải lên ${req.files.length} tệp tài liệu.`
+  );
+
   res.json({ message: 'Tải lên tài liệu thành công!' });
+});
+
+// DELETE /api/tasks/:id/attachments/:attId - Delete an attachment
+router.delete('/:id/attachments/:attId', authMiddleware, (req, res) => {
+  const taskId = parseInt(req.params.id);
+  const attId = parseInt(req.params.attId);
+
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+  if (!task) return res.status(404).json({ error: 'Không tìm thấy công việc.' });
+
+  const attachment = db.prepare('SELECT * FROM task_attachments WHERE id = ? AND task_id = ?').get(attId, taskId);
+  if (!attachment) return res.status(404).json({ error: 'Không tìm thấy tài liệu đính kèm.' });
+
+  const user = req.user;
+  const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
+  const isAssigner = task.assigner_id === user.id;
+  const isUploader = attachment.uploader_id === user.id;
+
+  if (!isAdmin && !isAssigner && !isUploader) {
+    return res.status(403).json({ error: 'Bạn không có quyền xóa tệp tài liệu này.' });
+  }
+
+  // Delete physical file if exists
+  if (fs.existsSync(attachment.file_path)) {
+    try {
+      fs.unlinkSync(attachment.file_path);
+    } catch (e) {
+      console.error('Lỗi khi xóa file trên đĩa:', e.message);
+    }
+  }
+
+  db.prepare('DELETE FROM task_attachments WHERE id = ?').run(attId);
+
+  notifyTaskEvent(
+    taskId,
+    'Xóa tài liệu đính kèm',
+    user.full_name,
+    `Đã xóa tệp: "${attachment.original_name}".`
+  );
+
+  res.json({ message: 'Xóa tài liệu thành công!' });
 });
 
 // POST /api/tasks/:id/transfer - Propose task transfer (only assignee can propose)
@@ -518,6 +645,13 @@ router.post('/:id/transfer', authMiddleware, (req, res) => {
     taskId,
     'Đề xuất chuyển giao người xử lý',
     `${user.full_name} đề xuất chuyển công việc "${task.title}" cho Thầy/Cô ${targetUser.full_name}. Lý do: ${reason.trim()}`
+  );
+
+  notifyTaskEvent(
+    taskId,
+    'Đề xuất chuyển giao công việc',
+    user.full_name,
+    `Đề xuất chuyển việc sang ${targetUser.full_name}. Lý do: ${reason.trim()}`
   );
 
   res.json({
@@ -595,6 +729,13 @@ router.post('/:id/transfer/:requestId/review', authMiddleware, (req, res) => {
       'Tiếp nhận công việc được chuyển giao',
       `Thầy/Cô đã được chuyển giao phụ trách chính công việc "${task.title}" từ Thầy/Cô ${oldAssignee.full_name}.`
     );
+
+    notifyTaskEvent(
+      taskId,
+      'Phê duyệt chuyển giao công việc',
+      user.full_name,
+      `Đã chấp thuận chuyển giao từ ${oldAssignee.full_name} sang ${newAssignee.full_name}. Ghi chú: ${review_note || 'Đồng ý'}`
+    );
   } else {
     // Notify rejected
     db.prepare(`
@@ -605,6 +746,13 @@ router.post('/:id/transfer/:requestId/review', authMiddleware, (req, res) => {
       taskId,
       'Đề xuất chuyển giao bị từ chối',
       `Đề xuất chuyển việc "${task.title}" chưa được chấp thuận. Lý do: ${review_note || 'Không đồng ý'}`
+    );
+
+    notifyTaskEvent(
+      taskId,
+      'Từ chối chuyển giao công việc',
+      user.full_name,
+      `Đã từ chối chuyển việc sang ${newAssignee.full_name}. Lý do: ${review_note || 'Không đồng ý'}`
     );
   }
 
@@ -648,6 +796,13 @@ router.post('/:id/evaluate', authMiddleware, (req, res) => {
     taskId,
     'Công việc đã được nghiệm thu & đánh giá',
     `${user.full_name} đã đánh giá công việc "${task.title}": Xếp loại ${kpi_evaluation || 'Đạt'} (${kpi_score || ''} điểm).`
+  );
+
+  notifyTaskEvent(
+    taskId,
+    'Nghiệm thu & Đánh giá KPI',
+    user.full_name,
+    `Đã nghiệm thu hoàn thành: Xếp loại ${kpi_evaluation || 'Đạt'} (${kpi_score || ''} điểm). Ghi chú: ${kpi_note || 'Không'}`
   );
 
   res.json({ message: 'Đánh giá nghiệm thu công việc thành công!' });

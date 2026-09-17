@@ -133,6 +133,105 @@ async function sendDailyDigest(triggerType = 'cron') {
   }
 }
 
+// Function to send arbitrary Zalo message via webhook
+async function sendZaloMessage(content, messageType = 'task_event', recipient = 'group_webhook') {
+  try {
+    const webhookSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_webhook_url');
+    const enabledSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_enabled');
+
+    if (webhookSetting && webhookSetting.value && enabledSetting && enabledSetting.value === '1') {
+      const response = await axios.post(webhookSetting.value, {
+        text: content,
+        message: content,
+        timestamp: Date.now()
+      }, { timeout: 8000 });
+
+      db.prepare(`
+        INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+        VALUES (?, ?, ?, 'success', ?)
+      `).run(messageType, recipient, content, JSON.stringify(response.data || {}));
+      return { sent: true };
+    } else {
+      db.prepare(`
+        INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+        VALUES (?, ?, ?, 'success', 'Webhook chưa kích hoạt, đã lưu thông báo vào nhật ký.')
+      `).run(messageType, recipient, content);
+      return { sent: false, note: 'Webhook chưa kích hoạt' };
+    }
+  } catch (err) {
+    console.error('Lỗi gửi Zalo:', err.message);
+    db.prepare(`
+      INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+      VALUES (?, ?, ?, 'failed', ?)
+    `).run(messageType, recipient, content, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+// Function to notify all stakeholders (Assigner, Assignee, Followers) on any task change
+async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
+  try {
+    const task = db.prepare(`
+      SELECT t.*, 
+             u_assigner.full_name as assigner_name,
+             u_assignee.full_name as assignee_name
+      FROM tasks t
+      JOIN users u_assigner ON t.assigner_id = u_assigner.id
+      JOIN users u_assignee ON t.assignee_id = u_assignee.id
+      WHERE t.id = ?
+    `).get(taskId);
+
+    if (!task) return;
+
+    const followers = db.prepare(`
+      SELECT u.id, u.full_name FROM task_followers tf
+      JOIN users u ON tf.user_id = u.id
+      WHERE tf.task_id = ?
+    `).all(taskId);
+
+    const followerNames = followers.map(f => f.full_name).join(', ') || 'Không có';
+
+    // 1. In-App Notifications for stakeholders
+    const insertNoti = db.prepare(`
+      INSERT INTO notifications (user_id, task_id, title, message, type)
+      VALUES (?, ?, ?, ?, 'task_event')
+    `);
+
+    const recipientUserIds = new Set();
+    recipientUserIds.add(task.assigner_id);
+    recipientUserIds.add(task.assignee_id);
+    followers.forEach(f => recipientUserIds.add(f.id));
+
+    recipientUserIds.forEach(uid => {
+      insertNoti.run(
+        uid,
+        taskId,
+        eventTitle,
+        `${actorName}: ${detail} (Công việc "${task.title}")`
+      );
+    });
+
+    // 2. Format and send Zalo notification
+    let zaloMsg = `🔔 [THÔNG BÁO CÔNG VIỆC - GDMN]\n`;
+    zaloMsg += `📌 CV: ${task.title}\n`;
+    zaloMsg += `⚡ Sự kiện: ${eventTitle}\n`;
+    zaloMsg += `👤 Thực hiện: ${actorName}\n`;
+    zaloMsg += `📝 Chi tiết: ${detail}\n`;
+    zaloMsg += `------------------------------------\n`;
+    zaloMsg += `👉 Người giao việc: ${task.assigner_name}\n`;
+    zaloMsg += `👉 Người xử lý chính: ${task.assignee_name}\n`;
+    if (followers.length > 0) {
+      zaloMsg += `👥 Người theo dõi: ${followerNames}\n`;
+    }
+    zaloMsg += `⏰ Hạn chót: ${task.due_date} | Tiến độ: ${task.progress}%\n`;
+    zaloMsg += `(Đã gửi thông báo tới Người giao việc, Người xử lý chính và các nhân sự theo dõi)`;
+
+    await sendZaloMessage(zaloMsg, 'task_event');
+  } catch (err) {
+    console.error('Lỗi khi phát thông báo task event:', err);
+  }
+}
+
 // Setup node-cron scheduler at 07:30 AM every day
 function startCronJobs() {
   // Run at 07:30 every day: 30 7 * * *
@@ -146,5 +245,7 @@ function startCronJobs() {
 
 module.exports = {
   startCronJobs,
-  sendDailyDigest
+  sendDailyDigest,
+  sendZaloMessage,
+  notifyTaskEvent
 };

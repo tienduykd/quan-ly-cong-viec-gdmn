@@ -14,7 +14,11 @@ import {
   Award,
   Upload,
   MessageCircle,
-  FileText
+  FileText,
+  Edit3,
+  Save,
+  Trash2,
+  Search
 } from 'lucide-react';
 import { apiRequest } from '../api';
 
@@ -25,6 +29,20 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   const [newComment, setNewComment] = useState('');
   const [commentProgress, setCommentProgress] = useState('');
   const [allUsers, setAllUsers] = useState([]);
+
+  // Edit Mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editCategory, setEditCategory] = useState('Chuyên môn GDMN');
+  const [editPriority, setEditPriority] = useState('medium');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editAssigneeId, setEditAssigneeId] = useState('');
+  const [editAssigneeSearch, setEditAssigneeSearch] = useState('');
+  const [editFollowers, setEditFollowers] = useState([]);
+  const [editFollowerSearch, setEditFollowerSearch] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Transfer modal state
   const [showTransferDialog, setShowTransferDialog] = useState(false);
@@ -41,6 +59,22 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   // Upload result files state
   const [resultFiles, setResultFiles] = useState([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // ESC key listener to close modal or cancel sub-dialogs
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showTransferDialog) setShowTransferDialog(false);
+        else if (showKpiDialog) setShowKpiDialog(false);
+        else if (isEditing) setIsEditing(false);
+        else onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, showTransferDialog, showKpiDialog, isEditing, onClose]);
 
   const fetchTaskDetails = async () => {
     if (!taskId) return;
@@ -59,7 +93,6 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   useEffect(() => {
     if (isOpen && taskId) {
       fetchTaskDetails();
-      // Fetch users list for transfer dropdown
       apiRequest('/users')
         .then(setAllUsers)
         .catch(console.error);
@@ -72,6 +105,65 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   const isAssigner = task && task.assigner_id === currentUser.id;
   const isAssignee = task && task.assignee_id === currentUser.id;
   const canManage = isAdmin || isAssigner;
+
+  // Initialize edit mode with current task values
+  const handleStartEdit = () => {
+    setEditTitle(task.title || '');
+    setEditDesc(task.description || '');
+    setEditCategory(task.category || 'Chuyên môn GDMN');
+    setEditPriority(task.priority || 'medium');
+    setEditStartDate(task.start_date || '');
+    setEditDueDate(task.due_date || '');
+    setEditAssigneeId(task.assignee_id ? task.assignee_id.toString() : '');
+    setEditAssigneeSearch('');
+    setEditFollowers(task.followers ? task.followers.map(f => f.user_id) : []);
+    setEditFollowerSearch('');
+    setIsEditing(true);
+  };
+
+  // Save changes from Edit Mode
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editTitle.trim() || !editDueDate) {
+      alert('Vui lòng nhập tiêu đề và hạn chót hoàn thành.');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await apiRequest(`/tasks/${taskId}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDesc.trim(),
+          category: editCategory,
+          priority: editPriority,
+          start_date: editStartDate,
+          due_date: editDueDate,
+          assignee_id: parseInt(editAssigneeId),
+          followers: editFollowers
+        })
+      });
+      setIsEditing(false);
+      fetchTaskDetails();
+      if (onTaskUpdated) onTaskUpdated();
+    } catch (err) {
+      alert('Lỗi lưu chỉnh sửa: ' + err.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Delete attachment
+  const handleDeleteAttachment = async (attId, originalName) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa tệp "${originalName}"?`)) return;
+    try {
+      await apiRequest(`/tasks/${taskId}/attachments/${attId}`, { method: 'DELETE' });
+      fetchTaskDetails();
+      if (onTaskUpdated) onTaskUpdated();
+    } catch (err) {
+      alert('Lỗi khi xóa tệp: ' + err.message);
+    }
+  };
 
   // Handle adding a comment / progress note
   const handleAddComment = async (e) => {
@@ -240,11 +332,34 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
     }
   };
 
+  // Filtered users for editing Assignee & Followers
+  const filteredEditAssignees = allUsers.filter(u => {
+    if (!editAssigneeSearch.trim()) return true;
+    const term = editAssigneeSearch.toLowerCase();
+    return u.full_name.toLowerCase().includes(term) || (u.department_name && u.department_name.toLowerCase().includes(term));
+  });
+
+  const filteredEditFollowers = allUsers
+    .filter(u => u.id.toString() !== editAssigneeId)
+    .filter(u => {
+      if (!editFollowerSearch.trim()) return true;
+      const term = editFollowerSearch.toLowerCase();
+      return u.full_name.toLowerCase().includes(term) || (u.department_name && u.department_name.toLowerCase().includes(term));
+    });
+
+  const handleToggleEditFollower = (uid) => {
+    if (editFollowers.includes(uid)) {
+      setEditFollowers(editFollowers.filter(id => id !== uid));
+    } else {
+      setEditFollowers([...editFollowers, uid]);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+        {/* Sticky Header */}
+        <div className="sticky top-0 z-20 bg-slate-900 px-6 py-4 text-white flex items-center justify-between shadow-md">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-teal-400" />
             <span className="text-xs font-mono text-slate-400">CV-{taskId?.toString().padStart(4, '0')}</span>
@@ -252,19 +367,233 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
               {task?.category}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg hover:bg-white/20 transition text-white/80 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {canManage && !isEditing && task && (
+              <button
+                onClick={handleStartEdit}
+                className="flex items-center gap-1.5 px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-lg transition shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Sửa việc
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg hover:bg-white/20 transition text-white/80 hover:text-white"
+              title="Đóng (Phím ESC)"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="p-12 text-center text-slate-400 text-sm">Đang tải thông tin công việc...</div>
         ) : error ? (
           <div className="p-6 text-center text-red-600 text-sm">{error}</div>
+        ) : isEditing ? (
+          /* EDIT MODE FORM */
+          <form onSubmit={handleSaveEdit} className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-900 font-medium flex items-center gap-2">
+              <Edit3 className="w-4 h-4 text-teal-600 flex-shrink-0" />
+              <span>Chế độ chỉnh sửa công việc: Mọi thay đổi sẽ tự động gửi thông báo tới Người giao việc, Người xử lý chính và Người theo dõi qua Zalo & In-App.</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Tiêu đề công việc *</label>
+              <input
+                type="text"
+                required
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl font-bold focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Mô tả & Yêu cầu</label>
+              <textarea
+                rows={3}
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Phân loại</label>
+                <select
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white"
+                >
+                  <option value="Chuyên môn GDMN">Chuyên môn GDMN</option>
+                  <option value="NCKH">Nghiên cứu khoa học (NCKH)</option>
+                  <option value="Rèn NVSP">Rèn NVSP & Thực tập</option>
+                  <option value="Đảm bảo chất lượng">Đảm bảo chất lượng (KĐCL)</option>
+                  <option value="Công tác đoàn thể">Công tác đoàn thể</option>
+                  <option value="Hành chính">Hành chính / Báo cáo</option>
+                  <option value="Việc cá nhân">Việc cá nhân</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Mức ưu tiên</label>
+                <select
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-semibold"
+                >
+                  <option value="urgent">🔴 Khẩn cấp</option>
+                  <option value="high">🟠 Cao</option>
+                  <option value="medium">🔵 Bình thường</option>
+                  <option value="low">⚪ Thấp</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ngày bắt đầu</label>
+                <input
+                  type="date"
+                  value={editStartDate}
+                  onChange={(e) => setEditStartDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Hạn hoàn thành (Deadline) *</label>
+                <input
+                  type="date"
+                  required
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-bold text-red-600"
+                />
+              </div>
+            </div>
+
+            {/* Change Assignee with search filter */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                Điều chỉnh Người xử lý chính *
+              </label>
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Gõ tên để lọc nhanh danh sách giảng viên..."
+                    value={editAssigneeSearch}
+                    onChange={(e) => setEditAssigneeSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <select
+                  value={editAssigneeId}
+                  onChange={(e) => setEditAssigneeId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white font-bold"
+                >
+                  {filteredEditAssignees.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name} ({u.position || 'GV'} - {u.department_name || ''})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Change Followers with search filter */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase">
+                  Người theo dõi ({editFollowers.length} đã chọn)
+                </label>
+                {editFollowers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setEditFollowers([])}
+                    className="text-[11px] text-red-600 hover:underline"
+                  >
+                    Bỏ chọn tất cả
+                  </button>
+                )}
+              </div>
+              <div className="relative mb-2">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Gõ tên để lọc danh sách người theo dõi..."
+                  value={editFollowerSearch}
+                  onChange={(e) => setEditFollowerSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg"
+                />
+              </div>
+              <div className="max-h-36 overflow-y-auto p-3 border border-slate-200 rounded-xl bg-slate-50 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {filteredEditFollowers.map(u => (
+                  <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition">
+                    <input
+                      type="checkbox"
+                      checked={editFollowers.includes(u.id)}
+                      onChange={() => handleToggleEditFollower(u.id)}
+                      className="rounded text-teal-600 focus:ring-teal-500"
+                    />
+                    <span className="font-medium text-slate-800">{u.full_name}</span>
+                    <span className="text-[10px] text-slate-400">({u.department_code})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Manage Attachments in Edit Mode (Delete button) */}
+            {task.attachments && task.attachments.length > 0 && (
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">
+                  Quản lý tài liệu đính kèm (Nhấn vào biểu tượng thùng rác để xóa):
+                </label>
+                <div className="space-y-1.5">
+                  {task.attachments.map(att => (
+                    <div key={att.id} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                      <span className="truncate pr-2 font-medium text-slate-800 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-teal-600" />
+                        {att.original_name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(att.id, att.original_name)}
+                        className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
+                        title="Xóa tài liệu này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Buttons in Edit Mode */}
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Hủy sửa
+              </button>
+              <button
+                type="submit"
+                disabled={savingEdit}
+                className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-md transition flex items-center gap-1.5"
+              >
+                <Save className="w-4 h-4" />
+                {savingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
+            </div>
+          </form>
         ) : (
+          /* VIEW MODE */
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Title & Status Bar */}
             <div>
@@ -440,7 +769,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
               </div>
             )}
 
-            {/* Pending Transfer Requests Review for Assigner / Admin */}
+            {/* Pending Transfer Requests Review */}
             {task.transferRequests && task.transferRequests.length > 0 && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
                 <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
@@ -464,7 +793,6 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                       <strong>Lý do:</strong> {req.reason}
                     </p>
 
-                    {/* Review actions if current user is assigner/admin and status is pending */}
                     {req.status === 'pending' && canManage && (
                       <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
                         <input
@@ -507,15 +835,17 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
               {task.attachments && task.attachments.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {task.attachments.map(att => (
-                    <a
+                    <div
                       key={att.id}
-                      href={`/uploads/${att.filename}`}
-                      download={att.original_name}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="p-2.5 rounded-xl border border-slate-200 hover:border-teal-500 hover:bg-teal-50/50 transition flex items-center justify-between text-xs group"
                     >
-                      <div className="flex items-center gap-2 truncate pr-2">
+                      <a
+                        href={`/uploads/${att.filename}`}
+                        download={att.original_name}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 truncate pr-2 flex-1"
+                      >
                         <FileText className="w-4 h-4 text-teal-600 flex-shrink-0" />
                         <div className="truncate">
                           <p className="font-semibold text-slate-800 truncate group-hover:text-teal-700">
@@ -525,9 +855,28 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                             {att.is_result_document ? '⭐ Minh chứng kết quả' : 'Tài liệu hướng dẫn'} • {att.uploader_name}
                           </p>
                         </div>
+                      </a>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <a
+                          href={`/uploads/${att.filename}`}
+                          download={att.original_name}
+                          className="p-1 text-slate-400 hover:text-teal-600 transition"
+                          title="Tải về"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                        {(canManage || att.uploader_id === currentUser.id) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(att.id, att.original_name)}
+                            className="p-1 text-slate-400 hover:text-red-600 transition"
+                            title="Xóa tài liệu"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
-                      <Download className="w-4 h-4 text-slate-400 group-hover:text-teal-600 flex-shrink-0" />
-                    </a>
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -653,7 +1002,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                   onClick={() => setShowTransferDialog(false)}
                   className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
                 >
-                  Hủy
+                  Hủy (ESC)
                 </button>
                 <button
                   type="button"
@@ -720,7 +1069,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                   onClick={() => setShowKpiDialog(false)}
                   className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
                 >
-                  Đóng
+                  Đóng (ESC)
                 </button>
                 <button
                   type="button"
@@ -735,7 +1084,10 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
         )}
 
         {/* Footer */}
-        <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-end">
+        <div className="sticky bottom-0 z-20 bg-slate-50 px-6 py-3 border-t border-slate-200 flex items-center justify-between">
+          <span className="text-[11px] text-slate-400">
+            Nhấn phím <strong>ESC</strong> để đóng nhanh
+          </span>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition"

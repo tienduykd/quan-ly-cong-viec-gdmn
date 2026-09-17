@@ -242,18 +242,18 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
       ) : viewMode === 'table' ? (
         /* TABLE VIEW */
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+          <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+            <table className="w-full text-left text-xs relative">
+              <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase tracking-wider font-bold shadow-sm">
                 <tr>
-                  <th className="py-3 px-4 w-12 text-center">Mã</th>
-                  <th className="py-3 px-4">Tên công việc</th>
-                  <th className="py-3 px-4">Người giao</th>
-                  <th className="py-3 px-4">Người xử lý chính</th>
-                  <th className="py-3 px-4">Hạn hoàn thành</th>
-                  <th className="py-3 px-4 w-32">Tiến độ</th>
-                  <th className="py-3 px-4 text-center">Trạng thái</th>
-                  <th className="py-3 px-4 text-center">Ưu tiên</th>
+                  <th className="py-3 px-4 w-12 text-center bg-slate-100">Mã</th>
+                  <th className="py-3 px-4 bg-slate-100">Tên công việc</th>
+                  <th className="py-3 px-4 bg-slate-100">Người giao</th>
+                  <th className="py-3 px-4 bg-slate-100">Người xử lý chính</th>
+                  <th className="py-3 px-4 bg-slate-100">Hạn hoàn thành</th>
+                  <th className="py-3 px-4 w-32 bg-slate-100">Tiến độ</th>
+                  <th className="py-3 px-4 text-center bg-slate-100">Trạng thái</th>
+                  <th className="py-3 px-4 text-center bg-slate-100">Ưu tiên</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

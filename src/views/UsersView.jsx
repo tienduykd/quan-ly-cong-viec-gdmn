@@ -146,9 +146,9 @@ export default function UsersView({ currentUser }) {
 
       {/* Users Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+        <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
+          <table className="w-full text-left text-xs relative">
+            <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase tracking-wider font-bold shadow-sm">
               <tr>
                 <th className="py-3 px-4 w-12 text-center">STT</th>
                 <th className="py-3 px-4">Họ và tên</th>

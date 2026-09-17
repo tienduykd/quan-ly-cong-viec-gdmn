@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Upload, Plus, Paperclip, Users, Calendar, AlertCircle } from 'lucide-react';
+import { X, Upload, Plus, Paperclip, Users, Calendar, AlertCircle, Search } from 'lucide-react';
 import { apiRequest } from '../api';
 
 export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, currentUser }) {
@@ -11,12 +11,27 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
   const [departmentId, setDepartmentId] = useState('');
   const [selectedFollowers, setSelectedFollowers] = useState([]);
+  const [followerSearch, setFollowerSearch] = useState('');
   const [isPersonal, setIsPersonal] = useState(false);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Handle ESC key to close modal
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -25,7 +40,6 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
         .then(data => {
           setUsers(data || []);
           if (!assigneeId && data.length > 0) {
-            // Default assignee: current user
             setAssigneeId(currentUser.id.toString());
             setDepartmentId(currentUser.department_id ? currentUser.department_id.toString() : '');
           }
@@ -106,6 +120,26 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
     }
   };
 
+  // Filter users for Assignee
+  const filteredAssigneeUsers = users.filter(u => {
+    if (!assigneeSearch.trim()) return true;
+    const term = assigneeSearch.toLowerCase();
+    return u.full_name.toLowerCase().includes(term) ||
+           (u.department_name && u.department_name.toLowerCase().includes(term)) ||
+           (u.position && u.position.toLowerCase().includes(term));
+  });
+
+  // Filter users for Followers
+  const filteredFollowerUsers = users
+    .filter(u => u.id.toString() !== assigneeId)
+    .filter(u => {
+      if (!followerSearch.trim()) return true;
+      const term = followerSearch.toLowerCase();
+      return u.full_name.toLowerCase().includes(term) ||
+             (u.department_name && u.department_name.toLowerCase().includes(term)) ||
+             (u.position && u.position.toLowerCase().includes(term));
+    });
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
@@ -120,6 +154,7 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
           <button
             onClick={onClose}
             className="p-1 rounded-lg hover:bg-white/20 transition text-white/80 hover:text-white"
+            title="Đóng (Phím ESC)"
           >
             <X className="w-5 h-5" />
           </button>
@@ -251,21 +286,34 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
           {!isPersonal && (
             <div className="space-y-4 pt-2 border-t border-slate-100">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Searchable Assignee Selection */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                     Người xử lý chính <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    value={assigneeId}
-                    onChange={(e) => setAssigneeId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white font-medium"
-                  >
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} ({u.position || 'GV'} - {u.department_name || ''})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Gõ tên giảng viên để tìm nhanh..."
+                        value={assigneeSearch}
+                        onChange={(e) => setAssigneeSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                    <select
+                      value={assigneeId}
+                      onChange={(e) => setAssigneeId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-xs bg-white font-medium"
+                    >
+                      {filteredAssigneeUsers.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name} ({u.position || 'GV'} - {u.department_name || ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -286,15 +334,41 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
                 </div>
               </div>
 
-              {/* Followers (Người theo dõi - chỉ xem) */}
+              {/* Followers with search filter */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Người theo dõi (Xem tiến độ, không chịu trách nhiệm xử lý chính)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Người theo dõi ({selectedFollowers.length} đã chọn)
+                  </label>
+                  {selectedFollowers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFollowers([])}
+                      className="text-[11px] text-red-600 hover:underline"
+                    >
+                      Bỏ chọn tất cả
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Gõ tên hoặc tổ để lọc danh sách người theo dõi..."
+                    value={followerSearch}
+                    onChange={(e) => setFollowerSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
                 <div className="max-h-36 overflow-y-auto p-3 border border-slate-200 rounded-xl bg-slate-50 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  {users
-                    .filter(u => u.id.toString() !== assigneeId)
-                    .map(u => (
+                  {filteredFollowerUsers.length === 0 ? (
+                    <p className="text-slate-400 italic text-[11px] col-span-2 text-center py-2">
+                      Không tìm thấy giảng viên nào khớp với từ khóa tìm kiếm.
+                    </p>
+                  ) : (
+                    filteredFollowerUsers.map(u => (
                       <label key={u.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1.5 rounded-lg transition">
                         <input
                           type="checkbox"
@@ -305,11 +379,9 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
                         <span className="font-medium text-slate-800">{u.full_name}</span>
                         <span className="text-[10px] text-slate-400">({u.department_code})</span>
                       </label>
-                    ))}
+                    ))
+                  )}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Đã chọn {selectedFollowers.length} người theo dõi.
-                </p>
               </div>
             </div>
           )}
@@ -356,21 +428,26 @@ export default function CreateTaskModal({ isOpen, onClose, onTaskCreated, curren
           </div>
 
           {/* Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
-            >
-              Hủy bỏ
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-600/20 transition disabled:opacity-50"
-            >
-              {loading ? 'Đang khởi tạo...' : (isPersonal ? 'Lưu việc cá nhân' : 'Xác nhận giao việc')}
-            </button>
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+            <span className="text-[11px] text-slate-400">
+              Nhấn phím <strong>ESC</strong> để đóng nhanh
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-600/20 transition disabled:opacity-50"
+              >
+                {loading ? 'Đang khởi tạo...' : (isPersonal ? 'Lưu việc cá nhân' : 'Xác nhận giao việc')}
+              </button>
+            </div>
           </div>
         </form>
       </div>

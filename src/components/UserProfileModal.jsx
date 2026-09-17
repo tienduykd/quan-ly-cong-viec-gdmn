@@ -14,6 +14,19 @@ export default function UserProfileModal({ isOpen, onClose, user, onProfileUpdat
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  // ESC key to close
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleUpdateProfile = async (e) => {

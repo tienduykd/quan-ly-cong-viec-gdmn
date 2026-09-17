@@ -6,6 +6,7 @@ const fs = require('fs');
 const db = require('../db');
 const { authMiddleware } = require('../auth');
 const { notifyTaskEvent } = require('../cron');
+const zaloPersonalService = require('../zaloPersonalService');
 
 // Configure multer file upload
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -806,6 +807,100 @@ router.post('/:id/evaluate', authMiddleware, (req, res) => {
   );
 
   res.json({ message: 'Đánh giá nghiệm thu công việc thành công!' });
+});
+
+// POST /api/tasks/:id/remind-zalo - Send a 1-on-1 private Zalo reminder to the assignee
+router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
+  try {
+    const taskId = parseInt(req.params.id);
+    const task = db.prepare(`
+      SELECT t.*, u_assigner.full_name as assigner_name
+      FROM tasks t
+      JOIN users u_assigner ON t.assigner_id = u_assigner.id
+      WHERE t.id = ?
+    `).get(taskId);
+
+    if (!task) {
+      return res.status(404).json({ error: 'Không tìm thấy công việc.' });
+    }
+
+    const user = req.user;
+    const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
+    const isAssigner = task.assigner_id === user.id;
+
+    if (!isAdmin && !isAssigner) {
+      return res.status(403).json({ error: 'Chỉ Người giao việc hoặc Quản trị viên mới có quyền gửi tin nhắn nhắc nhở riêng.' });
+    }
+
+    const assignee = db.prepare('SELECT * FROM users WHERE id = ?').get(task.assignee_id);
+    if (!assignee) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin người được giao việc.' });
+    }
+
+    const phone = (assignee.zalo_phone || assignee.phone || '').trim();
+    const honorific = assignee.gender === 'male' ? 'Thầy' : (assignee.gender === 'female' ? 'Cô' : 'Thầy/Cô');
+
+    if (!phone) {
+      return res.status(400).json({
+        error: `${honorific} ${assignee.full_name} chưa có Số điện thoại trong hồ sơ để gửi tin nhắn Zalo riêng. Vui lòng cập nhật SĐT ở mục Quản lý nhân sự.`
+      });
+    }
+
+    if (zaloPersonalService.status !== 'logged_in') {
+      return res.status(400).json({
+        error: 'Tài khoản Zalo của hệ thống chưa được đăng nhập. Quản trị viên vui lòng vào mục Cấu hình Zalo để quét mã QR kết nối.'
+      });
+    }
+
+    const prioText = task.priority === 'urgent' ? '🔴 KHẨN CẤP' : (task.priority === 'high' ? '🟠 Cao' : '🔵 Bình thường');
+    const reminderMsg = `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi ${honorific} ${assignee.full_name},
+${user.full_name} xin gửi lời nhắc về công việc:
+📋 Tên công việc: ${task.title}
+⏳ Hạn hoàn thành: ${task.due_date || 'Chưa định'}
+📊 Mức ưu tiên: ${prioText}
+📈 Tiến độ hiện tại: ${task.progress || 0}%
+------------------------------------
+Kính nhờ ${honorific} lưu ý bố trí thời gian hoàn thành và cập nhật tiến độ trên hệ thống nhé.
+Trân trọng cảm ơn ${honorific}!`;
+
+    const sendRes = await zaloPersonalService.sendToPhone(phone, reminderMsg);
+
+    if (!sendRes.sent) {
+      db.prepare(`
+        INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+        VALUES ('remind_personal', ?, ?, 'failed', ?)
+      `).run(phone, reminderMsg, sendRes.error || sendRes.note || 'Lỗi gửi tin Zalo');
+
+      return res.status(400).json({
+        error: sendRes.error || sendRes.note || `Không thể gửi tin tới Zalo của SĐT ${phone}. Vui lòng kiểm tra lại số điện thoại hoặc trạng thái kết nối bạn bè/Zalo.`
+      });
+    }
+
+    db.prepare(`
+      INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+      VALUES ('remind_personal', ?, ?, 'success', ?)
+    `).run(phone, reminderMsg, JSON.stringify(sendRes));
+
+    // Also record an in-app notification for the assignee
+    db.prepare(`
+      INSERT INTO notifications (user_id, task_id, title, message, type)
+      VALUES (?, ?, ?, ?, 'task_reminder')
+    `).run(
+      assignee.id,
+      task.id,
+      'Nhắc nhở tiến độ công việc',
+      `${user.full_name} đã gửi lời nhắc nhở tiến độ công việc "${task.title}" qua Zalo riêng.`
+    );
+
+    return res.json({
+      success: true,
+      message: `Đã gửi tin nhắn nhắc nhở trực tiếp tới Zalo của ${honorific} ${assignee.full_name} (${phone}) thành công!`
+    });
+  } catch (err) {
+    console.error('[REMIND-ZALO-ERROR]', err);
+    return res.status(500).json({ error: 'Đã xảy ra lỗi khi gửi tin nhắn Zalo: ' + err.message });
+  }
 });
 
 module.exports = router;

@@ -60,6 +60,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
   // Upload result files state
   const [resultFiles, setResultFiles] = useState([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [remindingZalo, setRemindingZalo] = useState(false);
 
   // ESC key listener to close modal or cancel sub-dialogs
   useEffect(() => {
@@ -329,6 +330,24 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
     }
   };
 
+  const handleRemindZalo = async () => {
+    if (!task) return;
+    if (!confirm(`Bạn có chắc muốn gửi tin nhắn Zalo riêng nhắc việc tới ${task.assignee_name}?`)) {
+      return;
+    }
+    setRemindingZalo(true);
+    try {
+      const res = await apiRequest(`/tasks/${taskId}/remind-zalo`, {
+        method: 'POST'
+      });
+      alert(res.message || 'Đã gửi tin nhắn nhắc nhở Zalo riêng thành công!');
+    } catch (err) {
+      alert('Không thể gửi nhắc nhở Zalo: ' + err.message);
+    } finally {
+      setRemindingZalo(false);
+    }
+  };
+
   const getStatusBadge = (s) => {
     switch (s) {
       case 'completed': return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">✅ Đã hoàn thành</span>;
@@ -374,6 +393,18 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {canManage && !isEditing && task && task.status !== 'completed' && (
+              <button
+                type="button"
+                onClick={handleRemindZalo}
+                disabled={remindingZalo}
+                className="flex items-center gap-1.5 px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shadow-sm disabled:opacity-50"
+                title="Gửi tin nhắn riêng nhắc việc qua Zalo cho người phụ trách"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                {remindingZalo ? 'Đang gửi...' : 'Nhắc Zalo riêng'}
+              </button>
+            )}
             {canManage && !isEditing && task && (
               <button
                 onClick={handleStartEdit}
@@ -652,14 +683,28 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                     </button>
                   )}
                 </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
-                    {task.assignee_name.split(' ').slice(-1)[0][0]}
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                      {task.assignee_name.split(' ').slice(-1)[0][0]}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">{task.assignee_name}</p>
+                      <p className="text-[10px] text-slate-500">{task.assignee_position || 'GV'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">{task.assignee_name}</p>
-                    <p className="text-[10px] text-slate-500">{task.assignee_position || 'GV'}</p>
-                  </div>
+                  {canManage && task.status !== 'completed' && (
+                    <button
+                      type="button"
+                      onClick={handleRemindZalo}
+                      disabled={remindingZalo}
+                      className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1 shadow-xs disabled:opacity-50"
+                      title="Gửi tin nhắn riêng nhắc việc qua Zalo cho giảng viên này"
+                    >
+                      <MessageCircle className="w-3 h-3 text-blue-600" />
+                      {remindingZalo ? 'Đang gửi...' : 'Nhắc Zalo'}
+                    </button>
+                  )}
                 </div>
               </div>
 

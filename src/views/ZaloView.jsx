@@ -28,7 +28,8 @@ export default function ZaloView({ currentUser }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [triggering, setTriggering] = useState(false);
+  const [triggeringPersonal, setTriggeringPersonal] = useState(false);
+  const [triggeringGroup, setTriggeringGroup] = useState(false);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -119,22 +120,33 @@ export default function ZaloView({ currentUser }) {
     }
   };
 
-  const handleTriggerDigest = async () => {
-    setTriggering(true);
+  const handleTriggerDigest = async (mode = 'manual_personal') => {
+    if (mode === 'manual_group') {
+      setTriggeringGroup(true);
+    } else {
+      setTriggeringPersonal(true);
+    }
     setMessage('');
     setError('');
     try {
-      const res = await apiRequest('/zalo/trigger-digest', { method: 'POST' });
+      const res = await apiRequest('/zalo/trigger-digest', {
+        method: 'POST',
+        body: JSON.stringify({ mode })
+      });
       if (res.success) {
-        setMessage(`Đã gửi bản tin điểm việc hôm nay thành công! (${res.dueCount} việc đến hạn, ${res.overdueCount} việc quá hạn). Ghi chú: ${res.zaloResult?.note || ''}`);
+        setMessage(`Đã gửi thành công! (${res.dueCount} việc đến hạn, ${res.overdueCount} việc quá hạn). Ghi chú: ${res.zaloResult?.note || ''}`);
         loadZaloSettings();
       } else {
-        setError('Gửi thất bại: ' + res.error);
+        setError('Gửi thất bại: ' + (res.error || 'Vui lòng kiểm tra lại kết nối Zalo.'));
       }
     } catch (err) {
-      setError('Lỗi kết nối: ' + err.message);
+      setError('Lỗi gửi: ' + err.message);
     } finally {
-      setTriggering(false);
+      if (mode === 'manual_group') {
+        setTriggeringGroup(false);
+      } else {
+        setTriggeringPersonal(false);
+      }
     }
   };
 
@@ -598,24 +610,69 @@ export default function ZaloView({ currentUser }) {
                   </div>
                 </div>
 
-                {/* Direct Trigger Digest Action */}
+                {/* Notification Modes: Mode 1 (Default & Automated 1-1) and Mode 2 (Manual Group Broadcast) */}
                 {isAdmin && (
-                  <div className="p-4 bg-teal-50 border border-teal-200/80 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold text-teal-950">Chủ động phát bản tin điểm việc hôm nay</p>
-                      <p className="text-[11px] text-teal-800">
-                        Ngoài lịch hẹn tự động 07:30 sáng, bạn có thể nhấn nút này để gửi ngay bản tin vào nhóm Zalo đã chọn.
-                      </p>
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-teal-600" />
+                        Cơ chế thông báo nhắc việc Zalo (2 Chế độ):
+                      </h3>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleTriggerDigest}
-                      disabled={triggering || !personalTargetGroupId}
-                      className="px-5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-xl shadow-md transition whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Send className="w-4 h-4" />
-                      {triggering ? 'Đang gửi...' : 'Gửi ngay bản tin hôm nay'}
-                    </button>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* MODE 1: Private 1-1 Direct Messages */}
+                      <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-3 shadow-xs flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              Chế độ 1 (Mặc định & Tự động)
+                            </span>
+                            <span className="text-[11px] font-mono font-bold text-emerald-700">07:30 Sáng</span>
+                          </div>
+                          <h4 className="font-bold text-sm text-slate-800">💬 Nhắc việc riêng 1-1 từng người</h4>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            Mỗi sáng lúc 07:30, hệ thống tự động lọc các giảng viên có việc đến hạn hoặc quá hạn và <strong>gửi tin nhắn Zalo riêng (1-1)</strong> vào số điện thoại của từng Thầy/Cô. <em>Không làm phiền nhóm chung</em>.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTriggerDigest('manual_personal')}
+                          disabled={triggeringPersonal}
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50 mt-2"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          {triggeringPersonal ? 'Đang gửi tin nhắn riêng...' : 'Gửi tin nhắn riêng ngay bây giờ (Thủ công)'}
+                        </button>
+                      </div>
+
+                      {/* MODE 2: Manual Group Announcement */}
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl space-y-3 shadow-xs flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                              <Users className="w-3.5 h-3.5 text-blue-600" />
+                              Chế độ 2 (Phát nhóm - Chỉ thủ công)
+                            </span>
+                            <span className="text-[11px] font-semibold text-blue-700">Khi Admin bấm</span>
+                          </div>
+                          <h4 className="font-bold text-sm text-slate-800">📢 Bản tin tổng hợp vào Nhóm GDMN</h4>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            Gửi bản tin tổng hợp toàn bộ công việc trong ngày vào nhóm chat Zalo chung. <strong>Chỉ phát khi Quản trị viên chủ động bấm nút</strong> (hoàn toàn không tự động gửi để tránh spam nhóm).
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleTriggerDigest('manual_group')}
+                          disabled={triggeringGroup || !personalTargetGroupId}
+                          className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50 mt-2"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          {triggeringGroup ? 'Đang phát bản tin nhóm...' : 'Phát bản tin vào Nhóm Zalo GDMN (Thủ công)'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

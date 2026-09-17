@@ -40,9 +40,10 @@ router.post('/settings', authMiddleware, adminOnly, (req, res) => {
   res.json({ message: 'Cập nhật cấu hình Zalo thành công!' });
 });
 
-// POST /api/zalo/trigger-digest - Manually trigger daily digest
+// POST /api/zalo/trigger-digest - Manually trigger daily digest (mode: 'manual_personal' or 'manual_group')
 router.post('/trigger-digest', authMiddleware, adminOnly, async (req, res) => {
-  const result = await sendDailyDigest('manual_trigger');
+  const mode = req.body?.mode || 'manual_personal';
+  const result = await sendDailyDigest(mode);
   res.json(result);
 });
 

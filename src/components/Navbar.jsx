@@ -22,8 +22,10 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotiDropdown, setShowNotiDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showAdminDropdown, setShowAdminDropdown] = useState(false);
   const notiRef = useRef(null);
   const userRef = useRef(null);
+  const adminRef = useRef(null);
 
   const fetchNotifications = async () => {
     try {
@@ -49,6 +51,9 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
       }
       if (userRef.current && !userRef.current.contains(event.target)) {
         setShowUserDropdown(false);
+      }
+      if (adminRef.current && !adminRef.current.contains(event.target)) {
+        setShowAdminDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -84,76 +89,117 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
   const navItems = [
     { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
     { id: 'tasks', label: 'Công việc', icon: CheckSquare },
-    { id: 'stats', label: 'Báo cáo & KPI', icon: BarChart3 },
-    ...(isAdmin ? [
-      { id: 'users', label: 'Nhân sự (21)', icon: Users },
-      { id: 'zalo', label: 'Cấu hình Zalo', icon: MessageSquare, badge: 'Admin' },
-      { id: 'supabase', label: 'Lưu trữ Cloud', icon: Database, badge: 'Cloud' },
-    ] : [])
+    { id: 'stats', label: 'Báo cáo & KPI', icon: BarChart3 }
   ];
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo & App Name */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20">
-              <GraduationCap className="w-6 h-6" />
+        <div className="flex items-center justify-between h-16 gap-4">
+          {/* Logo & App Name - Simplified as requested */}
+          <div
+            className="flex items-center gap-2.5 cursor-pointer select-none flex-shrink-0"
+            onClick={() => {
+              setActiveTab('dashboard');
+              setShowAdminDropdown(false);
+            }}
+          >
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-600 to-emerald-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20 flex-shrink-0">
+              <GraduationCap className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-800 text-base leading-tight tracking-tight">
-                  Quản lý Công việc
-                </span>
-                <span className="text-[11px] font-semibold bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full">
-                  Ngành GDMN
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 hidden sm:block">
-                Hệ thống điều hành CTĐT Giáo dục Mầm non
-              </p>
-            </div>
+            <span className="font-extrabold text-slate-900 text-base sm:text-lg tracking-tight whitespace-nowrap">
+              Quản lý công việc GDMN
+            </span>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1">
+          {/* Navigation Tabs - Dàn trên 1 dòng với nút khối to đẹp */}
+          <nav className="hidden md:flex items-center gap-2">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition ${
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setShowAdminDropdown(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition shadow-xs ${
                     isActive
-                      ? 'bg-teal-50 text-teal-700 shadow-sm border border-teal-200/60 font-semibold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-2 ring-teal-600/20'
+                      : 'text-slate-700 hover:text-teal-700 hover:bg-teal-50/70 bg-slate-50 border border-slate-200/80'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-teal-600' : 'text-slate-400'}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-teal-600'}`} />
                   <span>{item.label}</span>
-                  {item.badge && (
-                    <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.2 rounded-full font-bold">
-                      {item.badge}
-                    </span>
-                  )}
                 </button>
               );
             })}
+
+            {/* Quản trị Menu (Gom Danh sách giảng viên & Cấu hình Zalo) */}
+            {isAdmin && (
+              <div className="relative" ref={adminRef}>
+                <button
+                  onClick={() => setShowAdminDropdown(!showAdminDropdown)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition shadow-xs ${
+                    activeTab === 'users' || activeTab === 'zalo'
+                      ? 'bg-teal-600 text-white shadow-md shadow-teal-600/25 ring-2 ring-teal-600/20'
+                      : 'text-slate-700 hover:text-teal-700 hover:bg-teal-50/70 bg-slate-50 border border-slate-200/80'
+                  }`}
+                >
+                  <Shield className={`w-4 h-4 ${activeTab === 'users' || activeTab === 'zalo' ? 'text-white' : 'text-teal-600'}`} />
+                  <span>Quản trị</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showAdminDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showAdminDropdown && (
+                  <div className="absolute right-0 sm:left-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 p-1.5 z-50 animate-in fade-in zoom-in duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Quản trị hệ thống
+                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveTab('users');
+                        setShowAdminDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 text-xs font-bold flex items-center gap-2.5 transition rounded-xl ${
+                        activeTab === 'users' ? 'bg-teal-50 text-teal-800 font-extrabold' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center flex-shrink-0">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold">Danh sách giảng viên</p>
+                        <p className="text-[10px] font-normal text-slate-400">Hồ sơ, SĐT Zalo & Giới tính</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('zalo');
+                        setShowAdminDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 text-xs font-bold flex items-center gap-2.5 transition rounded-xl ${
+                        activeTab === 'zalo' ? 'bg-teal-50 text-teal-800 font-extrabold' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-bold">Cấu hình Zalo</p>
+                        <p className="text-[10px] font-normal text-slate-400">Kết nối Bot & Nhắc việc</p>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
 
-          {/* Right Actions */}
+          {/* Right Actions (Đã bỏ nút Giao việc/Thêm việc theo yêu cầu) */}
           <div className="flex items-center gap-3">
-            {/* Create Task Button */}
-            <button
-              onClick={onOpenCreateTask}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-xl shadow-md shadow-teal-600/20 transition active:translate-y-px"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span className="hidden sm:inline">Giao việc / Thêm việc</span>
-            </button>
-
             {/* Notification Bell */}
             <div className="relative" ref={notiRef}>
               <button
@@ -286,25 +332,56 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout, onOpen
         </div>
 
         {/* Mobile Tab Bar */}
-        <div className="flex md:hidden overflow-x-auto py-2 gap-1 border-t border-slate-100">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
+        <div className="flex md:hidden overflow-x-auto py-2 gap-1.5 border-t border-slate-100">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'dashboard' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Tổng quan</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'tasks' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            <span>Công việc</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+              activeTab === 'stats' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            <span>Báo cáo</span>
+          </button>
+          {isAdmin && (
+            <>
               <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
-                  isActive
-                    ? 'bg-teal-50 text-teal-700 font-bold'
-                    : 'text-slate-600 hover:bg-slate-100'
+                onClick={() => setActiveTab('users')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                  activeTab === 'users' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{item.label}</span>
+                <Users className="w-3.5 h-3.5" />
+                <span>Danh sách GV</span>
               </button>
-            );
-          })}
+              <button
+                onClick={() => setActiveTab('zalo')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                  activeTab === 'zalo' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Cấu hình Zalo</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>

@@ -127,12 +127,12 @@ export default function ZaloView({ currentUser }) {
   }, [personalStatus]);
 
   const handleSaveSettings = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     setSaving(true);
     setMessage('');
     setError('');
     try {
-      await apiRequest('/zalo/settings', {
+      const res = await apiRequest('/zalo/settings', {
         method: 'POST',
         body: JSON.stringify({
           webhookUrl,
@@ -140,8 +140,8 @@ export default function ZaloView({ currentUser }) {
           dailyTime
         })
       });
-      setMessage('Lưu cấu hình Zalo thành công!');
-      loadZaloSettings();
+      setMessage(res.message || `Đã cập nhật giờ nhắc việc tự động thành ${dailyTime}!`);
+      await loadZaloSettings();
     } catch (err) {
       setError('Lỗi lưu cấu hình: ' + err.message);
     } finally {
@@ -440,7 +440,7 @@ export default function ZaloView({ currentUser }) {
       case 'manual_group':
         return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">📢 Nhóm GDMN</span>;
       case 'cron':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">⏰ Tự động (07:30)</span>;
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">⏰ Tự động ({dailyTime || '07:30'})</span>;
       case 'test':
         return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">🧪 Kiểm tra</span>;
       default:
@@ -461,7 +461,7 @@ export default function ZaloView({ currentUser }) {
               Tích hợp Nhắc việc Tự động qua Zalo
             </h2>
             <p className="text-xs text-slate-500">
-              Gửi thông báo công việc đến hạn và quá hạn vào Nhóm Zalo ngành GDMN vào mỗi sáng (07:30)
+              Tự động gửi tin nhắn Zalo nhắc việc đến hạn vào mỗi sáng ({dailyTime || '07:30'})
             </p>
           </div>
         </div>
@@ -674,7 +674,7 @@ export default function ZaloView({ currentUser }) {
                     </div>
 
                     <div className="p-3 bg-white/80 rounded-xl text-xs text-slate-600 leading-relaxed border border-slate-100">
-                      ✅ Phiên đăng nhập đã được lưu trữ an toàn. Máy chủ sẽ dùng tài khoản này để <strong>tự động phát bản tin lúc 07:30 sáng</strong> và thông báo khi có công việc mới.
+                      ✅ Phiên đăng nhập đã được lưu trữ an toàn. Máy chủ sẽ dùng tài khoản này để <strong>tự động gửi tin nhắn nhắc việc lúc {dailyTime || '07:30'} sáng</strong> và thông báo khi có công việc mới.
                     </div>
 
                     {isAdmin && (
@@ -830,7 +830,7 @@ export default function ZaloView({ currentUser }) {
                           </div>
                           <h4 className="font-bold text-sm text-slate-800">💬 Nhắc Deadline hàng ngày (1-1 riêng từng người)</h4>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            Mỗi sáng (mặc định 07:30), hệ thống tự động lọc các giảng viên có việc đến hạn hoàn thành hôm đó và <strong>gửi tin nhắn Zalo riêng (1-1)</strong> vào số điện thoại từng người (chỉ ai có việc đến hạn hôm đó mới nhận). <em>Không gửi vào nhóm chung</em>.
+                            Mỗi sáng lúc <strong>{dailyTime || '07:30'}</strong>, hệ thống tự động lọc các giảng viên có việc đến hạn hoàn thành hôm đó và <strong>gửi tin nhắn Zalo riêng (1-1)</strong> vào số điện thoại từng người (chỉ ai có việc đến hạn hôm đó mới nhận). <em>Không gửi vào nhóm chung</em>.
                           </p>
                         </div>
                         <div className="flex gap-2 pt-1">
@@ -905,7 +905,7 @@ export default function ZaloView({ currentUser }) {
             </div>
 
             <p className="text-xs text-slate-700 leading-relaxed">
-              Hệ thống sẽ <strong>tự động gửi thông báo khi có bất kỳ sự kiện nào phát sinh</strong> (giao việc mới, sửa việc, đổi tiến độ, bình luận, thêm tài liệu...) và <strong>tổng hợp bản tin nhắc việc lúc 07:30 mỗi sáng</strong>.
+              Hệ thống sẽ <strong>tự động gửi thông báo khi có bất kỳ sự kiện nào phát sinh</strong> (giao việc mới, sửa việc, đổi tiến độ, bình luận, thêm tài liệu...) và <strong>tổng hợp bản tin nhắc việc lúc {dailyTime || '07:30'} mỗi sáng</strong>.
             </p>
 
             {/* Guide Tabs */}
@@ -1154,7 +1154,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                 <div className="p-4 bg-teal-50 border border-teal-200/80 rounded-xl space-y-2">
                   <p className="text-xs font-bold text-teal-950">Chủ động phát bản tin ngay lập tức</p>
                   <p className="text-[11px] text-teal-800">
-                    Ngoài lịch hẹn tự động 07:30 sáng, Cô có thể nhấn nút dưới đây để quét và gửi bản tin điểm việc ngay bây giờ.
+                    Ngoài lịch hẹn tự động {dailyTime || '07:30'} sáng, Cô có thể nhấn nút dưới đây để quét và gửi bản tin điểm việc ngay bây giờ.
                   </p>
                   <button
                     type="button"
@@ -1246,7 +1246,7 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
             }`}
           >
             <Clock className="w-3.5 h-3.5 text-emerald-600" />
-            <span>3. Nhắc Deadline hàng ngày (07:30)</span>
+            <span>3. Nhắc Deadline hàng ngày ({dailyTime || '07:30'})</span>
           </button>
           <button
             type="button"

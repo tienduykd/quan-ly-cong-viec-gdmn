@@ -30,14 +30,28 @@ router.get('/settings', authMiddleware, (req, res) => {
 router.post('/settings', authMiddleware, adminOnly, (req, res) => {
   const { webhookUrl, enabled, dailyTime } = req.body;
 
-  const updateSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-  updateSetting.run('zalo_webhook_url', webhookUrl !== undefined ? webhookUrl.trim() : '');
-  updateSetting.run('zalo_enabled', enabled ? '1' : '0');
-  if (dailyTime) {
-    updateSetting.run('daily_reminder_time', dailyTime);
+  const updateSetting = db.prepare(`
+    INSERT INTO settings (key, value, updated_at) 
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `);
+
+  if (webhookUrl !== undefined) {
+    updateSetting.run('zalo_webhook_url', webhookUrl.trim());
+  }
+  if (enabled !== undefined) {
+    updateSetting.run('zalo_enabled', enabled ? '1' : '0');
+  }
+  if (dailyTime !== undefined && dailyTime.trim()) {
+    updateSetting.run('daily_reminder_time', dailyTime.trim());
   }
 
-  res.json({ message: 'Cập nhật cấu hình Zalo thành công!' });
+  const currentDailyTime = dailyTime ? dailyTime.trim() : (db.prepare('SELECT value FROM settings WHERE key = ?').get('daily_reminder_time')?.value || '07:30');
+
+  res.json({
+    message: `Cập nhật cấu hình Zalo thành công! Giờ nhắc tự động: ${currentDailyTime}`,
+    dailyTime: currentDailyTime
+  });
 });
 
 // POST /api/zalo/trigger-digest - Manually trigger daily digest (mode: 'manual_personal' or 'manual_group')

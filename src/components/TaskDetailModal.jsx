@@ -20,7 +20,7 @@ import {
   Trash2,
   Search
 } from 'lucide-react';
-import { apiRequest, formatVietnamDateTime } from '../api';
+import { apiRequest, formatVietnamDateTime, formatDateDMY } from '../api';
 
 export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, onTaskUpdated }) {
   const [task, setTask] = useState(null);
@@ -712,7 +712,7 @@ export default function TaskDetailModal({ taskId, isOpen, onClose, currentUser, 
                 <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Hạn chót</p>
                 <div className="flex items-center gap-1.5 mt-1.5">
                   <Calendar className="w-4 h-4 text-slate-400" />
-                  <span className="text-xs font-bold text-slate-800">{task.due_date}</span>
+                  <span className="text-xs font-bold text-slate-800">{formatDateDMY(task.due_date)}</span>
                   {new Date(task.due_date) < new Date() && task.status !== 'completed' && (
                     <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.2 rounded">
                       Quá hạn

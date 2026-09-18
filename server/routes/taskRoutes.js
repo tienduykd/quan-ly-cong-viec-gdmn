@@ -50,7 +50,19 @@ function canUserViewTask(user, task) {
 
 // GET /api/tasks - List tasks with permission filtering
 router.get('/', authMiddleware, (req, res) => {
-  const { status, category, priority, department_id, scope, search } = req.query;
+  const {
+    status,
+    category,
+    priority,
+    department_id,
+    scope,
+    search,
+    sort_by,
+    assigner_id,
+    assignee_id,
+    assigner_name,
+    assignee_name
+  } = req.query;
   const user = req.user;
   const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
 
@@ -127,17 +139,46 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(department_id);
   }
 
+  // Assigner filter (by ID or text search)
+  if (assigner_id && assigner_id !== 'all') {
+    baseQuery += ' AND t.assigner_id = ?';
+    params.push(parseInt(assigner_id));
+  } else if (assigner_name && assigner_name.trim()) {
+    baseQuery += ' AND u_assigner.full_name LIKE ?';
+    params.push(`%${assigner_name.trim()}%`);
+  }
+
+  // Assignee filter (by ID or text search)
+  if (assignee_id && assignee_id !== 'all') {
+    baseQuery += ' AND t.assignee_id = ?';
+    params.push(parseInt(assignee_id));
+  } else if (assignee_name && assignee_name.trim()) {
+    baseQuery += ' AND u_assignee.full_name LIKE ?';
+    params.push(`%${assignee_name.trim()}%`);
+  }
+
   // Search by title or description
   if (search && search.trim()) {
     baseQuery += ' AND (t.title LIKE ? OR t.description LIKE ?)';
     params.push(`%${search.trim()}%`, `%${search.trim()}%`);
   }
 
-  baseQuery += ' ORDER BY t.created_at DESC';
+  // Sorting: Default to upcoming due date first ('due_date_asc')
+  let orderClause = ' ORDER BY CASE WHEN t.due_date IS NULL OR t.due_date = "" THEN 1 ELSE 0 END, t.due_date ASC, t.id DESC';
+  if (sort_by === 'start_date_asc') {
+    orderClause = ' ORDER BY CASE WHEN t.start_date IS NULL OR t.start_date = "" THEN 1 ELSE 0 END, t.start_date ASC, t.due_date ASC, t.id DESC';
+  } else if (sort_by === 'due_date_desc') {
+    orderClause = ' ORDER BY CASE WHEN t.due_date IS NULL OR t.due_date = "" THEN 1 ELSE 0 END, t.due_date DESC, t.id DESC';
+  } else if (sort_by === 'created_desc') {
+    orderClause = ' ORDER BY t.created_at DESC, t.id DESC';
+  }
+
+  baseQuery += orderClause;
 
   const tasks = db.prepare(baseQuery).all(...params);
   res.json(tasks);
 });
+
 
 // POST /api/tasks - Create task with file attachments
 router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {

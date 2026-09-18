@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CheckSquare,
   Search,
@@ -14,9 +14,156 @@ import {
   List,
   AlertTriangle,
   Award,
-  MessageCircle
+  MessageCircle,
+  ArrowUpDown,
+  ChevronDown,
+  Check,
+  X,
+  RotateCcw,
+  UserCheck,
+  Send
 } from 'lucide-react';
-import { apiRequest } from '../api';
+import { apiRequest, formatDateDMY } from '../api';
+
+function SearchableUserDropdown({ label, icon: Icon = User, selectedId, onChange, users, placeholder }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedUser = users.find(u => String(u.id) === String(selectedId));
+
+  const filteredUsers = users.filter(u => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (u.full_name && u.full_name.toLowerCase().includes(term)) ||
+      (u.department_name && u.department_name.toLowerCase().includes(term)) ||
+      (u.role && u.role.toLowerCase().includes(term))
+    );
+  });
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition shadow-xs ${
+          selectedId && selectedId !== 'all'
+            ? 'bg-teal-50 border-teal-300 text-teal-800 font-bold'
+            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+        }`}
+      >
+        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${selectedId && selectedId !== 'all' ? 'text-teal-600' : 'text-slate-400'}`} />
+        <span className="whitespace-nowrap">
+          {label}: <span className={selectedUser ? 'text-teal-900 font-bold' : 'text-slate-500 font-normal'}>{selectedUser ? selectedUser.full_name : 'Tất cả'}</span>
+        </span>
+        {selectedId && selectedId !== 'all' ? (
+          <span
+            role="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('all');
+            }}
+            title="Bỏ lọc"
+            className="p-0.5 hover:bg-teal-200/70 rounded-full ml-0.5 text-teal-700 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </span>
+        ) : (
+          <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 sm:left-0 mt-1.5 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+          <div className="relative mb-2">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              autoFocus
+              placeholder="Gõ tìm kiếm tên..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('all');
+                setIsOpen(false);
+                setSearchTerm('');
+              }}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition ${
+                !selectedId || selectedId === 'all'
+                  ? 'bg-teal-50 text-teal-800 font-bold'
+                  : 'text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <span>{placeholder}</span>
+              {(!selectedId || selectedId === 'all') && <Check className="w-3.5 h-3.5 text-teal-600" />}
+            </button>
+
+            {filteredUsers.map(u => {
+              const isSelected = String(u.id) === String(selectedId);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(String(u.id));
+                    setIsOpen(false);
+                    setSearchTerm('');
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition ${
+                    isSelected
+                      ? 'bg-teal-50 text-teal-800 font-bold'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="truncate pr-2">
+                    <p className="font-semibold text-slate-800 truncate">{u.full_name}</p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {u.gender === 'female' ? 'Cô' : 'Thầy'} {u.department_name ? `• ${u.department_name}` : ''}
+                    </p>
+                  </div>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                </button>
+              );
+            })}
+
+            {filteredUsers.length === 0 && (
+              <div className="py-4 text-center text-slate-400 text-xs">
+                Không tìm thấy nhân sự phù hợp
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TasksView({ user, onSelectTask, onOpenCreateTask, initialScope, refreshTrigger }) {
   const [tasks, setTasks] = useState([]);
@@ -27,10 +174,21 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('due_date_asc'); // Mặc định: sắp đến hạn xếp lên trước
+  const [assignerFilter, setAssignerFilter] = useState('all');
+  const [assigneeFilter, setAssigneeFilter] = useState('all');
+  const [usersList, setUsersList] = useState([]);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
   const [remindingTaskId, setRemindingTaskId] = useState(null);
 
   const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
+
+  // Load danh sách nhân sự để lọc theo người giao và người xử lý
+  useEffect(() => {
+    apiRequest('/users')
+      .then(data => setUsersList(data || []))
+      .catch(err => console.error('Lỗi khi tải danh sách nhân sự:', err));
+  }, []);
 
   const handleQuickRemindZalo = async (task, e) => {
     e.stopPropagation();
@@ -68,6 +226,9 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
       if (categoryFilter !== 'all') params.append('category', categoryFilter);
       if (priorityFilter !== 'all') params.append('priority', priorityFilter);
       if (search) params.append('search', search);
+      if (sortBy) params.append('sort_by', sortBy);
+      if (assignerFilter !== 'all') params.append('assigner_id', assignerFilter);
+      if (assigneeFilter !== 'all') params.append('assignee_id', assigneeFilter);
 
       const data = await apiRequest(`/tasks?${params.toString()}`);
       setTasks(data || []);
@@ -81,7 +242,26 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
 
   useEffect(() => {
     loadTasks();
-  }, [scope, statusFilter, categoryFilter, priorityFilter, search, user, refreshTrigger]);
+  }, [scope, statusFilter, categoryFilter, priorityFilter, search, sortBy, assignerFilter, assigneeFilter, user, refreshTrigger]);
+
+  const hasActiveFilters =
+    search ||
+    statusFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    priorityFilter !== 'all' ||
+    assignerFilter !== 'all' ||
+    assigneeFilter !== 'all' ||
+    sortBy !== 'due_date_asc';
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setCategoryFilter('all');
+    setPriorityFilter('all');
+    setAssignerFilter('all');
+    setAssigneeFilter('all');
+    setSortBy('due_date_asc');
+  };
 
   const getPriorityBadge = (p) => {
     switch (p) {
@@ -183,76 +363,138 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
       </div>
 
       {/* Filter Bar & Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="relative w-full md:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Tìm theo tiêu đề, nội dung..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-teal-500"
-          />
-        </div>
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Tìm theo tiêu đề, nội dung công việc..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium placeholder:text-slate-400"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
-          >
-            <option value="all">Tất cả trạng thái</option>
-            <option value="todo">Chưa thực hiện</option>
-            <option value="in_progress">Đang thực hiện</option>
-            <option value="pending_approval">Chờ nghiệm thu</option>
-            <option value="completed">Đã hoàn thành</option>
-          </select>
+          {/* Filters & Sorting Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Sắp xếp hiển thị */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
+              <span className="text-[11px] font-bold text-slate-500 whitespace-nowrap">Sắp xếp:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-transparent border-none text-xs text-slate-800 font-bold focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="due_date_asc">Theo hạn hoàn thành (sắp đến hạn trước)</option>
+                <option value="start_date_asc">Theo ngày bắt đầu (sắp làm trước)</option>
+                <option value="due_date_desc">Theo hạn hoàn thành (xa nhất trước)</option>
+                <option value="created_desc">Mới tạo nhất</option>
+              </select>
+            </div>
 
-          {/* Category Filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
-          >
-            <option value="all">Tất cả danh mục</option>
-            <option value="Chuyên môn GDMN">Chuyên môn GDMN</option>
-            <option value="NCKH">Nghiên cứu KH (NCKH)</option>
-            <option value="Rèn NVSP">Rèn NVSP & Thực tập</option>
-            <option value="Đảm bảo chất lượng">Đảm bảo CLGD</option>
-            <option value="Công tác đoàn thể">Công tác đoàn thể</option>
-            <option value="Việc cá nhân">Việc cá nhân</option>
-          </select>
+            {/* Lọc người giao (Có ô gõ tìm kiếm) */}
+            <SearchableUserDropdown
+              label="Người giao"
+              icon={Send}
+              selectedId={assignerFilter}
+              onChange={setAssignerFilter}
+              users={usersList}
+              placeholder="Tất cả người giao"
+            />
 
-          {/* Priority Filter */}
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
-          >
-            <option value="all">Tất cả mức ưu tiên</option>
-            <option value="urgent">🔴 Khẩn cấp</option>
-            <option value="high">🟠 Cao</option>
-            <option value="medium">🔵 Bình thường</option>
-            <option value="low">⚪ Thấp</option>
-          </select>
+            {/* Lọc người xử lý chính (Có ô gõ tìm kiếm) */}
+            <SearchableUserDropdown
+              label="Người xử lý"
+              icon={UserCheck}
+              selectedId={assigneeFilter}
+              onChange={setAssigneeFilter}
+              users={usersList}
+              placeholder="Tất cả người xử lý chính"
+            />
 
-          {/* View toggle */}
-          <div className="flex border border-slate-200 rounded-xl overflow-hidden">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`p-2 transition ${viewMode === 'table' ? 'bg-teal-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-              title="Dạng bảng"
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
             >
-              <List className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 transition ${viewMode === 'grid' ? 'bg-teal-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-              title="Dạng thẻ"
+              <option value="all">Tất cả trạng thái</option>
+              <option value="todo">Chưa thực hiện</option>
+              <option value="in_progress">Đang thực hiện</option>
+              <option value="pending_approval">Chờ nghiệm thu</option>
+              <option value="completed">Đã hoàn thành</option>
+            </select>
+
+            {/* Category Filter */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
             >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
+              <option value="all">Tất cả danh mục</option>
+              <option value="Chuyên môn GDMN">Chuyên môn GDMN</option>
+              <option value="NCKH">Nghiên cứu KH (NCKH)</option>
+              <option value="Rèn NVSP">Rèn NVSP & Thực tập</option>
+              <option value="Đảm bảo chất lượng">Đảm bảo CLGD</option>
+              <option value="Công tác đoàn thể">Công tác đoàn thể</option>
+              <option value="Việc cá nhân">Việc cá nhân</option>
+            </select>
+
+            {/* Priority Filter */}
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+            >
+              <option value="all">Tất cả mức ưu tiên</option>
+              <option value="urgent">🔴 Khẩn cấp</option>
+              <option value="high">🟠 Cao</option>
+              <option value="medium">🔵 Bình thường</option>
+              <option value="low">⚪ Thấp</option>
+            </select>
+
+            {/* Reset Filters */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                title="Đặt lại bộ lọc"
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 rounded-xl text-xs transition flex items-center gap-1 font-medium"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Đặt lại</span>
+              </button>
+            )}
+
+            {/* View toggle */}
+            <div className="flex border border-slate-200 rounded-xl overflow-hidden ml-auto sm:ml-0">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-2 transition ${viewMode === 'table' ? 'bg-teal-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                title="Dạng bảng"
+              >
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 transition ${viewMode === 'grid' ? 'bg-teal-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                title="Dạng thẻ"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -355,7 +597,7 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                       </td>
                       <td className="py-3 px-2 whitespace-nowrap text-center">
                         <span className={`font-semibold text-xs ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
-                          {t.due_date}
+                          {formatDateDMY(t.due_date)}
                         </span>
                         {overdue && (
                           <span className="block text-[10px] font-bold text-red-500">Trễ hạn</span>
@@ -435,7 +677,7 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400">Hạn chót:</span>
                     <span className={`font-bold ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
-                      {t.due_date} {overdue && '(Quá hạn)'}
+                      {formatDateDMY(t.due_date)} {overdue && '(Quá hạn)'}
                     </span>
                   </div>
 

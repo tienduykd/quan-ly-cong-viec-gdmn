@@ -90,7 +90,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 min-h-[75vh]">
+      <main className="flex-1 w-full max-w-[1780px] mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 min-h-[75vh]">
         <ErrorBoundary>
           {activeTab === 'dashboard' && (
             <DashboardView
@@ -141,7 +141,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
+        <div className="w-full max-w-[1780px] mx-auto px-3 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
           <p>
             Phần mềm hỗ trợ quản lý công việc - Ngành Giáo dục Mầm non (GDMN) © 2026
           </p>

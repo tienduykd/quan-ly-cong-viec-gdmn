@@ -25,7 +25,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { apiRequest } from '../api';
+import { apiRequest, formatDateDMY } from '../api';
 
 export default function DashboardView({ user, onSelectTask, onOpenCreateTask, onViewTasksTab, refreshTrigger }) {
   const [stats, setStats] = useState(null);
@@ -261,7 +261,7 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
                     <div className="truncate pr-2">
                       <p className="font-bold text-slate-800 truncate">{t.title}</p>
                       <p className="text-[11px] text-slate-500">
-                        Phụ trách: <strong>{t.assignee_name}</strong> • Hạn chót: <span className="text-red-600 font-bold">{t.due_date}</span>
+                        Phụ trách: <strong>{t.assignee_name}</strong> • Hạn chót: <span className="text-red-600 font-bold">{formatDateDMY(t.due_date)}</span>
                       </p>
                     </div>
                     <span className="text-[11px] font-bold text-red-600 whitespace-nowrap bg-red-50 px-2 py-1 rounded-lg">

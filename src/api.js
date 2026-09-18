@@ -89,3 +89,13 @@ export function formatVietnamDateTime(dateStr) {
     second: '2-digit'
   });
 }
+
+export function formatDateDMY(dateStr) {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  const match = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return `${match[3]}-${match[2]}-${match[1]}`;
+  }
+  return dateStr;
+}

@@ -253,7 +253,7 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
 
     // Notify assignee if not assigning to self
     if (targetAssigneeId !== user.id && !isPersonalNum) {
-      const assignedUser = db.prepare('SELECT gender FROM users WHERE id = ?').get(targetAssigneeId);
+      const assignedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(targetAssigneeId);
       const userHonorific = getHonorific(assignedUser?.gender);
       db.prepare(`
         INSERT INTO notifications (user_id, task_id, title, message, type)
@@ -264,6 +264,64 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
         'Bạn được giao công việc mới',
         `${user.full_name} đã giao cho ${userHonorific} công việc "${title}" (Hạn chót: ${formatDateDMY(due_date)}).`
       );
+
+      // Tự động gửi tin nhắn Zalo tới người xử lý chính thông báo việc mới
+      setTimeout(async () => {
+        try {
+          if (!assignedUser) return;
+          const phone = (assignedUser.zalo_phone || assignedUser.phone || '').trim();
+          if (!phone) {
+            console.log(`[AUTO-ZALO-TASK] ${userHonorific} ${assignedUser.full_name} chưa có SĐT Zalo trong hồ sơ.`);
+            return;
+          }
+          if (zaloPersonalService.status !== 'logged_in') {
+            console.log('[AUTO-ZALO-TASK] Zalo chưa kết nối đăng nhập, bỏ qua gửi tự động.');
+            return;
+          }
+
+          const prioText = priority === 'urgent' ? '🔴 KHẨN CẤP' : (priority === 'high' ? '🟠 CAO' : (priority === 'low' ? '⚪ THẤP' : '🔵 BÌNH THƯỜNG'));
+
+          // Đọc mẫu tin nhắn cá nhân từ settings
+          const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+          const template = (templateRow && templateRow.value && templateRow.value.trim()) ? templateRow.value : `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+{danh_xung} có một công việc mới như sau:
+------------------------------------
+Người giao việc: {nguoi_gui}
+📋 Tên công việc: {ten_cong_viec}
+⏳ Hạn hoàn thành: {han_chot}
+📊 Mức ưu tiên: {muc_uu_tien}
+------------------------------------
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+
+          const zaloMsg = template
+            .replace(/{danh_xung}/g, userHonorific)
+            .replace(/{ho_ten}/g, assignedUser.full_name)
+            .replace(/{nguoi_gui}/g, user.full_name)
+            .replace(/{ten_cong_viec}/g, title.trim())
+            .replace(/{han_chot}/g, formatDateDMY(due_date))
+            .replace(/{muc_uu_tien}/g, prioText)
+            .replace(/{tien_do}/g, '0');
+
+          const sendRes = await zaloPersonalService.sendToPhone(phone, zaloMsg);
+          if (sendRes.sent) {
+            db.prepare(`
+              INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+              VALUES ('task_created_personal', ?, ?, 'success', ?)
+            `).run(phone, zaloMsg, JSON.stringify(sendRes));
+            console.log(`[AUTO-ZALO-TASK] Đã tự động gửi Zalo thông báo việc mới tới ${userHonorific} ${assignedUser.full_name} (${phone})`);
+          } else {
+            db.prepare(`
+              INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+              VALUES ('task_created_personal', ?, ?, 'failed', ?)
+            `).run(phone, zaloMsg, sendRes.error || sendRes.note || 'Lỗi gửi tin Zalo');
+            console.warn(`[AUTO-ZALO-TASK] Gửi Zalo việc mới thất bại cho ${phone}:`, sendRes.error);
+          }
+        } catch (zaloErr) {
+          console.error('[AUTO-ZALO-TASK] Lỗi khi tự động gửi Zalo việc mới:', zaloErr.message);
+        }
+      }, 500);
     }
 
     // Handle attachments

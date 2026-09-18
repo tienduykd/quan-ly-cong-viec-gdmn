@@ -532,7 +532,8 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                   <th className="py-3 px-4 min-w-[300px] sm:min-w-[380px] lg:min-w-[440px] bg-slate-100">Tên công việc</th>
                   <th className="py-3 px-2.5 w-28 lg:w-32 bg-slate-100 whitespace-nowrap">Người giao</th>
                   <th className="py-3 px-2.5 w-32 lg:w-36 bg-slate-100 whitespace-nowrap">Người xử lý chính</th>
-                  <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap">Hạn hoàn thành</th>
+                  <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap text-emerald-600 font-extrabold tracking-wide">START</th>
+                  <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap text-red-600 font-extrabold tracking-wide">DEADLINE</th>
                   <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Tiến độ</th>
                   <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap">Trạng thái</th>
                   <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Ưu tiên</th>
@@ -594,7 +595,12 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                         </span>
                       </td>
                       <td className="py-3 px-2 whitespace-nowrap text-center">
-                        <span className={`font-semibold text-xs ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
+                        <span className="font-bold text-xs text-emerald-600">
+                          {formatDateDMY(t.start_date)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 whitespace-nowrap text-center">
+                        <span className={`font-bold text-xs ${overdue ? 'text-red-600' : 'text-red-500'}`}>
                           {formatDateDMY(t.due_date)}
                         </span>
                         {overdue && (
@@ -673,8 +679,15 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Hạn chót:</span>
-                    <span className={`font-bold ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
+                    <span className="text-emerald-700 font-bold">START:</span>
+                    <span className="font-bold text-emerald-600">
+                      {formatDateDMY(t.start_date)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-red-700 font-bold">DEADLINE:</span>
+                    <span className={`font-bold ${overdue ? 'text-red-600' : 'text-red-500'}`}>
                       {formatDateDMY(t.due_date)} {overdue && '(Quá hạn)'}
                     </span>
                   </div>

@@ -84,15 +84,16 @@ router.post('/test-message', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-const DEFAULT_PERSONAL_TEMPLATE = `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+const DEFAULT_PERSONAL_TEMPLATE = `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
 Kính gửi {danh_xung} {ho_ten},
-{nguoi_gui} xin gửi lời nhắc về công việc:
+{danh_xung} có một công việc mới như sau:
+------------------------------------
+Người giao việc: {nguoi_gui}
 📋 Tên công việc: {ten_cong_viec}
 ⏳ Hạn hoàn thành: {han_chot}
 📊 Mức ưu tiên: {muc_uu_tien}
-📈 Tiến độ hiện tại: {tien_do}%
 ------------------------------------
-Kính nhờ {danh_xung} lưu ý bố trí thời gian hoàn thành và cập nhật tiến độ trên hệ thống.
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
 Trân trọng cảm ơn {danh_xung}!`;
 
 const DEFAULT_GROUP_TEMPLATE = `📢 [BẢN TIN CÔNG VIỆC HÀNG NGÀY - NGÀNH GDMN]

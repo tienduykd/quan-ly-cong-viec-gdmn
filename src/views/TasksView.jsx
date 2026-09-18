@@ -288,15 +288,15 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
             <table className="w-full text-left text-xs relative">
               <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase tracking-wider font-bold shadow-sm">
                 <tr>
-                  <th className="py-3 px-4 w-12 text-center bg-slate-100">Mã</th>
-                  <th className="py-3 px-4 bg-slate-100">Tên công việc</th>
-                  <th className="py-3 px-4 bg-slate-100">Người giao</th>
-                  <th className="py-3 px-4 bg-slate-100">Người xử lý chính</th>
-                  <th className="py-3 px-4 bg-slate-100">Hạn hoàn thành</th>
-                  <th className="py-3 px-4 w-32 bg-slate-100">Tiến độ</th>
-                  <th className="py-3 px-4 text-center bg-slate-100">Trạng thái</th>
-                  <th className="py-3 px-4 text-center bg-slate-100">Ưu tiên</th>
-                  <th className="py-3 px-4 text-center bg-slate-100 whitespace-nowrap">Gửi thông báo</th>
+                  <th className="py-3 px-2 w-12 text-center bg-slate-100 whitespace-nowrap">Mã</th>
+                  <th className="py-3 px-4 min-w-[300px] sm:min-w-[380px] lg:min-w-[440px] bg-slate-100">Tên công việc</th>
+                  <th className="py-3 px-2.5 w-28 lg:w-32 bg-slate-100 whitespace-nowrap">Người giao</th>
+                  <th className="py-3 px-2.5 w-32 lg:w-36 bg-slate-100 whitespace-nowrap">Người xử lý chính</th>
+                  <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap">Hạn hoàn thành</th>
+                  <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Tiến độ</th>
+                  <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap">Trạng thái</th>
+                  <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Ưu tiên</th>
+                  <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Gửi thông báo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -308,12 +308,12 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                       onClick={() => onSelectTask(t.id)}
                       className="hover:bg-teal-50/40 cursor-pointer transition"
                     >
-                      <td className="py-3 px-4 text-center font-mono text-[11px] text-slate-400">
+                      <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-400 whitespace-nowrap">
                         {t.id}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800 text-xs hover:text-teal-700 transition line-clamp-1">
+                        <div className="flex items-start gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-800 text-xs hover:text-teal-700 transition leading-snug line-clamp-3 break-words whitespace-normal">
                             {t.title}
                           </span>
                           {t.is_personal === 1 && (
@@ -327,8 +327,8 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-                          <span>{t.category}</span>
+                        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-400 mt-1">
+                          <span className="font-medium text-slate-500">{t.category}</span>
                           {t.department_name && (
                             <>
                               <span>•</span>
@@ -345,46 +345,46 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
+                      <td className="py-3 px-2.5 font-medium text-slate-700 whitespace-nowrap text-xs">
                         {t.assigner_name}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg">
+                      <td className="py-3 px-2.5 whitespace-nowrap">
+                        <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg text-xs inline-block">
                           {t.assignee_name}
                         </span>
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`font-semibold ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
+                      <td className="py-3 px-2 whitespace-nowrap text-center">
+                        <span className={`font-semibold text-xs ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
                           {t.due_date}
                         </span>
                         {overdue && (
                           <span className="block text-[10px] font-bold text-red-500">Trễ hạn</span>
                         )}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                      <td className="py-3 px-2 whitespace-nowrap text-center">
+                        <div className="w-16 mx-auto bg-slate-100 rounded-full h-2 overflow-hidden">
                           <div
                             className={`h-2 rounded-full ${t.progress === 100 ? 'bg-emerald-500' : 'bg-teal-600'}`}
                             style={{ width: `${t.progress}%` }}
                           />
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500 mt-0.5 block text-right">
+                        <span className="text-[10px] font-bold text-slate-500 mt-0.5 block text-center">
                           {t.progress}%
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <td className="py-3 px-2 text-center whitespace-nowrap">
                         {getStatusBadge(t.status)}
                       </td>
-                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <td className="py-3 px-2 text-center whitespace-nowrap">
                         {getPriorityBadge(t.priority)}
                       </td>
-                      <td className="py-3 px-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 px-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={(e) => handleQuickRemindZalo(t, e)}
                           disabled={remindingTaskId === t.id}
                           title={`Gửi tin nhắn Zalo riêng nhắc việc cho ${t.assignee_name}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-xs transition disabled:opacity-50"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-xs transition disabled:opacity-50"
                         >
                           <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
                           <span>{remindingTaskId === t.id ? 'Đang gửi...' : 'Nhắc Zalo'}</span>

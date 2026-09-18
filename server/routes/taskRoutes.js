@@ -163,14 +163,10 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(`%${search.trim()}%`, `%${search.trim()}%`);
   }
 
-  // Sorting: Default to upcoming due date first ('due_date_asc')
-  let orderClause = ' ORDER BY CASE WHEN t.due_date IS NULL OR t.due_date = "" THEN 1 ELSE 0 END, t.due_date ASC, t.id DESC';
+  // Sorting: Default to upcoming due date first ('due_date_asc'), or upcoming start date ('start_date_asc')
+  let orderClause = " ORDER BY CASE WHEN t.due_date IS NULL OR t.due_date = '' THEN 1 ELSE 0 END, t.due_date ASC, t.id DESC";
   if (sort_by === 'start_date_asc') {
-    orderClause = ' ORDER BY CASE WHEN t.start_date IS NULL OR t.start_date = "" THEN 1 ELSE 0 END, t.start_date ASC, t.due_date ASC, t.id DESC';
-  } else if (sort_by === 'due_date_desc') {
-    orderClause = ' ORDER BY CASE WHEN t.due_date IS NULL OR t.due_date = "" THEN 1 ELSE 0 END, t.due_date DESC, t.id DESC';
-  } else if (sort_by === 'created_desc') {
-    orderClause = ' ORDER BY t.created_at DESC, t.id DESC';
+    orderClause = " ORDER BY CASE WHEN t.start_date IS NULL OR t.start_date = '' THEN 1 ELSE 0 END, t.start_date ASC, t.due_date ASC, t.id DESC";
   }
 
   baseQuery += orderClause;

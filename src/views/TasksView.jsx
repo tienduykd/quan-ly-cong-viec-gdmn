@@ -399,8 +399,6 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
               >
                 <option value="due_date_asc">Theo hạn hoàn thành (sắp đến hạn trước)</option>
                 <option value="start_date_asc">Theo ngày bắt đầu (sắp làm trước)</option>
-                <option value="due_date_desc">Theo hạn hoàn thành (xa nhất trước)</option>
-                <option value="created_desc">Mới tạo nhất</option>
               </select>
             </div>
 

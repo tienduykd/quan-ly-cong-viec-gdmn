@@ -3,8 +3,9 @@ const path = require('path');
 const fs = require('fs');
 
 const BUCKET_NAME = process.env.SUPABASE_BUCKET || 'gdmn-database';
-const DB_FILE = path.join(__dirname, '..', 'data', 'quanlycongviec.sqlite');
-const SESSION_FILE = path.join(__dirname, 'zalo_session.json');
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const DB_FILE = path.join(dataDir, 'quanlycongviec.sqlite');
+const SESSION_FILE = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, 'zalo_session.json') : path.join(__dirname, 'zalo_session.json');
 
 class SupabaseService {
   constructor() {

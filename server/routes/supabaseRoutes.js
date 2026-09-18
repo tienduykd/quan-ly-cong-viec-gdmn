@@ -1,12 +1,70 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const supabaseService = require('../supabaseService');
 const db = require('../db');
 const { authMiddleware, adminOnly } = require('../auth');
 
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+const DB_FILE = path.join(dataDir, 'quanlycongviec.sqlite');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
+
 // GET /api/supabase/status
 router.get('/status', authMiddleware, (req, res) => {
   res.json(supabaseService.getStatus());
+});
+
+// GET /api/supabase/download-db - Tải trực tiếp file CSDL .sqlite về máy tính
+router.get('/download-db', authMiddleware, adminOnly, (req, res) => {
+  try {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch (e) {}
+
+    if (!fs.existsSync(DB_FILE)) {
+      return res.status(404).json({ error: 'Không tìm thấy file CSDL.' });
+    }
+
+    const filename = `quanlycongviec_backup_${new Date().toISOString().slice(0, 10)}.sqlite`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/x-sqlite3');
+    const fileStream = fs.createReadStream(DB_FILE);
+    fileStream.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi khi tải file CSDL: ' + err.message });
+  }
+});
+
+// POST /api/supabase/upload-db - Nạp file sao lưu .sqlite từ máy tính lên
+router.post('/upload-db', authMiddleware, adminOnly, upload.single('database_file'), async (req, res) => {
+  try {
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ error: 'Vui lòng chọn file .sqlite để khôi phục.' });
+    }
+
+    const buffer = req.file.buffer;
+    const header = buffer.subarray(0, 16).toString('utf8');
+    if (!header.startsWith('SQLite format 3')) {
+      return res.status(400).json({ error: 'File tải lên không phải là định dạng CSDL SQLite hợp lệ.' });
+    }
+
+    fs.writeFileSync(DB_FILE, buffer);
+    db.reopen();
+
+    if (supabaseService.client) {
+      await supabaseService.pushToSupabase();
+    }
+
+    res.json({ success: true, message: 'Đã khôi phục CSDL từ file tải lên thành công! Toàn bộ công việc và nhân sự đã được nạp lại.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Lỗi khôi phục CSDL: ' + err.message });
+  }
 });
 
 // POST /api/supabase/save-config

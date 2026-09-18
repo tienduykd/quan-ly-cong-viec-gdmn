@@ -166,16 +166,25 @@ function SearchableUserDropdown({ label, icon: Icon = User, selectedId, onChange
   );
 }
 
-export default function TasksView({ user, onSelectTask, onOpenCreateTask, initialScope, refreshTrigger }) {
+export default function TasksView({ user, onSelectTask, onOpenCreateTask, initialScope, initialStatus, refreshTrigger }) {
   const [tasks, setTasks] = useState([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [scope, setScope] = useState(initialScope || 'all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(initialStatus || 'all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('due_date_asc'); // Mặc định: sắp đến hạn xếp lên trước
+
+  useEffect(() => {
+    if (initialScope) {
+      setScope(initialScope);
+    }
+    if (initialStatus !== undefined) {
+      setStatusFilter(initialStatus);
+    }
+  }, [initialScope, initialStatus]);
   const [assignerFilter, setAssignerFilter] = useState('all');
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [usersList, setUsersList] = useState([]);

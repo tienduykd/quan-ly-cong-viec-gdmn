@@ -19,6 +19,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(getStoredUser());
   const [activeTab, setActiveTab] = useState('dashboard');
   const [tasksScope, setTasksScope] = useState('all');
+  const [tasksStatusFilter, setTasksStatusFilter] = useState('all');
 
   // Modal states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -68,8 +69,9 @@ export default function App() {
     setRefreshKey(prev => prev + 1);
   };
 
-  const handleViewTasksTab = (scope = 'all') => {
+  const handleViewTasksTab = (scope = 'all', status = 'all') => {
     setTasksScope(scope);
+    setTasksStatusFilter(status);
     setActiveTab('tasks');
   };
 
@@ -106,6 +108,7 @@ export default function App() {
             <TasksView
               user={currentUser}
               initialScope={tasksScope}
+              initialStatus={tasksStatusFilter}
               onSelectTask={(id) => setSelectedTaskId(id)}
               onOpenCreateTask={() => setIsCreateOpen(true)}
               refreshTrigger={refreshKey}

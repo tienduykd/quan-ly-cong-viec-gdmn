@@ -14,5 +14,16 @@ yarn-debug.log*
 .DS_Store
 Thumbs.db
 
+# Database & SQLite files (Tuyệt đối không lưu vào Git để tránh đè dữ liệu trên máy chủ Render)
+data/*.sqlite*
+data/*.db*
+data/*.json
+!data/.gitkeep
+
+# Uploaded attachments
+uploads/*
+!uploads/.gitkeep
+
 # Zalo personal session
 server/zalo_session.json
+

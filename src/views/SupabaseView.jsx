@@ -14,7 +14,10 @@ import {
   ExternalLink,
   Server,
   FileCheck,
-  Sparkles
+  Sparkles,
+  HardDrive,
+  FileDown,
+  Upload
 } from 'lucide-react';
 import { apiRequest, formatVietnamDateTime } from '../api';
 
@@ -141,6 +144,66 @@ export default function SupabaseView({ currentUser }) {
     }
   };
 
+  const handleDownloadBackup = () => {
+    const token = localStorage.getItem('token');
+    setMessage('Đang chuẩn bị file sao lưu CSDL...');
+    fetch('/api/supabase/download-db', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Không thể tải file sao lưu từ máy chủ.');
+        return res.blob();
+      })
+      .then(blob => {
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `quanlycongviec_backup_${new Date().toISOString().slice(0, 10)}.sqlite`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        setMessage('Đã tải bản sao lưu CSDL (.sqlite) về máy tính thành công!');
+      })
+      .catch(err => setError(err.message));
+  };
+
+  const handleUploadBackup = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!window.confirm(`Bạn có chắc muốn nạp file sao lưu "${file.name}"? CSDL hiện tại trên hệ thống sẽ được thay thế hoàn toàn bằng file này.`)) {
+      e.target.value = '';
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('database_file', file);
+    setRestoring(true);
+    setError('');
+    setMessage('Đang nạp file sao lưu và làm mới CSDL...');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/supabase/upload-db', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Nạp CSDL thất bại');
+      setMessage(data.message || 'Đã khôi phục CSDL thành công!');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRestoring(false);
+      e.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -225,6 +288,47 @@ export default function SupabaseView({ currentUser }) {
           <p className="text-[11px] text-slate-500 leading-relaxed">
             Phiên đăng nhập Zalo cá nhân được lưu an toàn trong đám mây, không còn bị out ra khi refresh trang.
           </p>
+        </div>
+      </div>
+
+      {/* Local File Backup & Restore (Offline Protection) */}
+      <div className="bg-white border border-teal-200/80 rounded-2xl p-5 shadow-sm space-y-3 bg-gradient-to-r from-teal-50/40 via-white to-emerald-50/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-100/60 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center font-bold">
+              <HardDrive className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Sao lưu & Khôi phục CSDL Dự phòng (.sqlite)</h3>
+              <p className="text-[11px] text-slate-500">Tải file database về máy tính cá nhân để lưu giữ an toàn, hoặc nạp lại khi cần thiết</p>
+            </div>
+          </div>
+          <span className="self-start sm:self-auto text-[11px] font-bold text-teal-800 bg-teal-100/80 px-2.5 py-1 rounded-lg">
+            Dự phòng 1 chạm
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleDownloadBackup}
+            className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2"
+          >
+            <FileDown className="w-4 h-4" />
+            Tải file CSDL (.sqlite) về máy tính
+          </button>
+
+          <label className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm">
+            <Upload className="w-4 h-4 text-teal-600" />
+            {restoring ? 'Đang nạp file...' : 'Khôi phục CSDL từ file máy tính'}
+            <input
+              type="file"
+              accept=".sqlite,.db"
+              onChange={handleUploadBackup}
+              disabled={restoring}
+              className="hidden"
+            />
+          </label>
         </div>
       </div>
 

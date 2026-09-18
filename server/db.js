@@ -3,12 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const dataDir = path.join(__dirname, '..', 'data');
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const uploadsDir = path.join(__dirname, '..', 'uploads');
+const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -293,21 +293,68 @@ function seedData() {
     console.log('Successfully seeded 21 users for GDMN program!');
   }
 
-  // Luôn đảm bảo tài khoản giảng viên Lê Duy tồn tại trong CSDL
+  // Luôn đảm bảo tài khoản giảng viên Lê Duy tồn tại và có SĐT trong CSDL
   try {
-    const leDuy = db.prepare('SELECT id FROM users WHERE username = ? OR full_name LIKE ?').get('leduy', '%Lê Duy%');
+    const leDuy = db.prepare('SELECT id, phone, zalo_phone FROM users WHERE username = ? OR full_name LIKE ?').get('leduy', '%Lê Duy%');
     if (!leDuy) {
       const saltRounds = 10;
       const hash = bcrypt.hashSync('leduy123', saltRounds);
       const dept = db.prepare('SELECT id FROM departments LIMIT 1').get();
       db.prepare(`
-        INSERT INTO users (username, password_hash, full_name, role, gender, department_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run('leduy', hash, 'Lê Duy', 'lecturer', 'Nam', dept ? dept.id : null);
+        INSERT INTO users (username, password_hash, full_name, role, gender, department_id, phone, zalo_phone)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('leduy', hash, 'Lê Duy', 'lecturer', 'Nam', dept ? dept.id : null, '0987654321', '0987654321');
       console.log('[DB] Đã khởi tạo thành công tài khoản giảng viên Lê Duy!');
+    } else if (!leDuy.phone) {
+      db.prepare('UPDATE users SET phone = ?, zalo_phone = ? WHERE id = ?').run('0987654321', '0987654321', leDuy.id);
     }
   } catch (e) {
     console.error('[DB] Lỗi kiểm tra tài khoản Lê Duy:', e.message);
+  }
+
+  // Khôi phục tự động các công việc vừa tạo nếu chưa có trong CSDL
+  try {
+    const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('dangutphuong');
+    const leDuyUser = db.prepare('SELECT id FROM users WHERE username = ? OR full_name LIKE ?').get('leduy', '%Lê Duy%');
+    if (adminUser && leDuyUser) {
+      const existingT17 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Test 6');
+      if (!existingT17) {
+        db.prepare(`
+          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run('Test 6', 'Công việc kiểm thử hệ thống thông báo Zalo', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, leDuyUser.id, 1);
+        console.log('[DB] Đã khôi phục công việc: Test 6');
+      }
+
+      const existingT18 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Test Phượng');
+      if (!existingT18) {
+        db.prepare(`
+          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run('Test Phượng', 'Công việc kiểm thử cá nhân', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, adminUser.id, 1);
+        console.log('[DB] Đã khôi phục công việc: Test Phượng');
+      }
+
+      const existingT19 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Xuống gặp chồng');
+      if (!existingT19) {
+        db.prepare(`
+          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run('Xuống gặp chồng', 'Việc cá nhân của giảng viên', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, adminUser.id, 1);
+        console.log('[DB] Đã khôi phục công việc: Xuống gặp chồng');
+      }
+
+      const existingT20 = db.prepare('SELECT id FROM tasks WHERE title LIKE ?').get('%Hoàn thiện danh mục%');
+      if (!existingT20) {
+        db.prepare(`
+          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run('Hoàn thiện danh mục minh chứng CTĐT Giáo dục Mầm non', 'Rà soát và hoàn thiện toàn bộ hồ sơ minh chứng phục vụ đợt đánh giá ngoài chất lượng CTĐT ngành Giáo dục Mầm non.', 'Chuyên môn GDMN', 'urgent', 'completed', 100, '2026-09-18', '2026-09-18', adminUser.id, leDuyUser.id, 1);
+        console.log('[DB] Đã khôi phục công việc: Hoàn thiện danh mục minh chứng');
+      }
+    }
+  } catch (e) {
+    console.error('[DB] Lỗi kiểm tra khôi phục công việc gần đây:', e.message);
   }
 
   // Seed default settings

@@ -162,70 +162,120 @@ export default function DashboardView({ user, onSelectTask, onOpenCreateTask, on
       {/* Metric Cards Grid */}
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          {/* 1. Tổng công việc */}
+          <div
+            onClick={() => onViewTasksTab && onViewTasksTab('all', 'all')}
+            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-teal-400 hover:-translate-y-0.5 transition-all duration-200 group"
+            title="Bấm để xem toàn bộ danh sách công việc"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Tổng công việc</span>
-              <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500 group-hover:text-teal-700 transition">Tổng công việc</span>
+              <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center group-hover:bg-teal-600 group-hover:text-white transition shadow-sm">
                 <CheckSquare className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-black text-slate-800">{stats.summary.total}</span>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Hoàn thành: {stats.summary.completionRate}%
-              </p>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <span className="text-2xl font-black text-slate-800 group-hover:text-teal-700 transition">{stats.summary.total}</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Hoàn thành: {stats.summary.completionRate}%
+                </p>
+              </div>
+              <span className="text-[11px] font-bold text-teal-600 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                Xem <ArrowRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          {/* 2. Đang thực hiện */}
+          <div
+            onClick={() => onViewTasksTab && onViewTasksTab('all', 'in_progress')}
+            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-blue-400 hover:-translate-y-0.5 transition-all duration-200 group"
+            title="Bấm để xem danh sách công việc đang thực hiện"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Đang thực hiện</span>
-              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500 group-hover:text-blue-700 transition">Đang thực hiện</span>
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition shadow-sm">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-black text-blue-600">{stats.summary.inProgress}</span>
-              <p className="text-[11px] text-slate-400 mt-0.5">Tiến độ đang chạy</p>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <span className="text-2xl font-black text-blue-600">{stats.summary.inProgress}</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Tiến độ đang chạy</p>
+              </div>
+              <span className="text-[11px] font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                Xem <ArrowRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          {/* 3. Chờ nghiệm thu */}
+          <div
+            onClick={() => onViewTasksTab && onViewTasksTab('all', 'pending_approval')}
+            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-amber-400 hover:-translate-y-0.5 transition-all duration-200 group"
+            title="Bấm để xem danh sách công việc chờ nghiệm thu"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Chờ nghiệm thu</span>
-              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500 group-hover:text-amber-700 transition">Chờ nghiệm thu</span>
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition shadow-sm">
                 <Clock className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-black text-amber-600">{stats.summary.pendingApproval}</span>
-              <p className="text-[11px] text-slate-400 mt-0.5">Đã hoàn thành 100%</p>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <span className="text-2xl font-black text-amber-600">{stats.summary.pendingApproval}</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Đã hoàn thành 100%</p>
+              </div>
+              <span className="text-[11px] font-bold text-amber-600 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                Xem <ArrowRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          {/* 4. Đã hoàn thành */}
+          <div
+            onClick={() => onViewTasksTab && onViewTasksTab('all', 'completed')}
+            className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between cursor-pointer hover:shadow-md hover:border-emerald-400 hover:-translate-y-0.5 transition-all duration-200 group"
+            title="Bấm để xem danh sách công việc đã hoàn thành"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500">Đã hoàn thành</span>
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-500 group-hover:text-emerald-700 transition">Đã hoàn thành</span>
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition shadow-sm">
                 <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-black text-emerald-600">{stats.summary.completed}</span>
-              <p className="text-[11px] text-slate-400 mt-0.5">Đã nghiệm thu</p>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <span className="text-2xl font-black text-emerald-600">{stats.summary.completed}</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">Đã nghiệm thu</p>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-600 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                Xem <ArrowRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between col-span-2 lg:col-span-1">
+          {/* 5. Quá hạn xử lý */}
+          <div
+            onClick={() => onViewTasksTab && onViewTasksTab('overdue', 'all')}
+            className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between col-span-2 lg:col-span-1 cursor-pointer hover:shadow-md hover:border-red-400 hover:-translate-y-0.5 transition-all duration-200 group"
+            title="Bấm để xem danh sách công việc quá hạn xử lý"
+          >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-red-600">Quá hạn xử lý</span>
-              <div className="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+              <span className="text-xs font-bold text-red-600 group-hover:text-red-700 transition">Quá hạn xử lý</span>
+              <div className="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition shadow-sm">
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-black text-red-600">{stats.summary.overdue}</span>
-              <p className="text-[11px] text-red-500 mt-0.5 font-medium">Cần nhắc nhở gấp</p>
+            <div className="mt-3 flex items-end justify-between">
+              <div>
+                <span className="text-2xl font-black text-red-600">{stats.summary.overdue}</span>
+                <p className="text-[11px] text-red-500 mt-0.5 font-medium">Cần nhắc nhở gấp</p>
+              </div>
+              <span className="text-[11px] font-bold text-red-600 opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">
+                Xem <ArrowRight className="w-3 h-3" />
+              </span>
             </div>
           </div>
         </div>

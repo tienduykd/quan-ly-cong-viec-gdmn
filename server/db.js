@@ -312,123 +312,55 @@ function seedData() {
     console.error('[DB] Lỗi kiểm tra tài khoản Lê Duy:', e.message);
   }
 
-  // Khôi phục tự động các công việc vừa tạo nếu chưa có trong CSDL
+  // Nạp và bảo toàn toàn bộ 20 công việc, người theo dõi, bình luận và dữ liệu mẫu
   try {
-    const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('dangutphuong');
-    const leDuyUser = db.prepare('SELECT id FROM users WHERE username = ? OR full_name LIKE ?').get('leduy', '%Lê Duy%');
-    if (adminUser && leDuyUser) {
-      const existingT17 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Test 6');
-      if (!existingT17) {
-        db.prepare(`
-          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run('Test 6', 'Công việc kiểm thử hệ thống thông báo Zalo', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, leDuyUser.id, 1);
-        console.log('[DB] Đã khôi phục công việc: Test 6');
-      }
+    const initialDataPath = path.join(__dirname, 'initialData.json');
+    if (fs.existsSync(initialDataPath)) {
+      const initialData = JSON.parse(fs.readFileSync(initialDataPath, 'utf8'));
 
-      const existingT18 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Test Phượng');
-      if (!existingT18) {
-        db.prepare(`
-          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run('Test Phượng', 'Công việc kiểm thử cá nhân', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, adminUser.id, 1);
-        console.log('[DB] Đã khôi phục công việc: Test Phượng');
-      }
-
-      const existingT19 = db.prepare('SELECT id FROM tasks WHERE title = ?').get('Xuống gặp chồng');
-      if (!existingT19) {
-        db.prepare(`
-          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run('Xuống gặp chồng', 'Việc cá nhân của giảng viên', 'Chuyên môn GDMN', 'medium', 'todo', 0, '2026-09-17', '2026-09-17', adminUser.id, adminUser.id, 1);
-        console.log('[DB] Đã khôi phục công việc: Xuống gặp chồng');
-      }
-
-      const existingT20 = db.prepare('SELECT id FROM tasks WHERE title LIKE ?').get('%Hoàn thiện danh mục%');
-      if (!existingT20) {
-        db.prepare(`
-          INSERT INTO tasks (title, description, category, priority, status, progress, start_date, due_date, assigner_id, assignee_id, department_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run('Hoàn thiện danh mục minh chứng CTĐT Giáo dục Mầm non', 'Rà soát và hoàn thiện toàn bộ hồ sơ minh chứng phục vụ đợt đánh giá ngoài chất lượng CTĐT ngành Giáo dục Mầm non.', 'Chuyên môn GDMN', 'urgent', 'completed', 100, '2026-09-18', '2026-09-18', adminUser.id, leDuyUser.id, 1);
-        console.log('[DB] Đã khôi phục công việc: Hoàn thiện danh mục minh chứng');
-      }
-    }
-  } catch (e) {
-    console.error('[DB] Lỗi kiểm tra khôi phục công việc gần đây:', e.message);
-  }
-
-  // Seed default settings
-  const insertSetting = db.prepare(`
-    INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)
-  `);
-  insertSetting.run('zalo_webhook_url', '', 'URL Webhook Zalo Bot để gửi tin nhắn vào nhóm chung');
-  insertSetting.run('zalo_enabled', '0', '1 để kích hoạt tự động gửi tin nhắn Zalo, 0 để tắt');
-  insertSetting.run('daily_reminder_time', '07:30', 'Giờ nhắc việc tự động mỗi sáng (HH:mm)');
-  insertSetting.run('app_name', 'Phần mềm hỗ trợ quản lý công việc - Ngành GDMN', 'Tên chính thức của phần mềm');
-
-  // Seed realistic tasks for GDMN
-  const taskCount = db.prepare('SELECT count(*) as count FROM tasks').get().count;
-  if (taskCount === 0) {
-    const adminUser = db.prepare('SELECT id FROM users WHERE username = ?').get('dangutphuong');
-    const user2 = db.prepare('SELECT id FROM users WHERE username = ?').get('nguyencongtruong');
-    const user3 = db.prepare('SELECT id FROM users WHERE username = ?').get('nguyenthanhhuyen');
-    const user4 = db.prepare('SELECT id FROM users WHERE username = ?').get('lethanhhuyen');
-
-    if (adminUser && user2 && user3) {
       const insertTask = db.prepare(`
         INSERT INTO tasks (
-          title, description, category, priority, status, progress,
-          start_date, due_date, assigner_id, assignee_id, department_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, title, description, category, priority, status, progress,
+          start_date, due_date, completed_at, assigner_id, assignee_id, department_id,
+          is_personal, kpi_score, kpi_evaluation, kpi_note, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      const t1 = insertTask.run(
-        'Rà soát và cập nhật đề cương chi tiết các học phần chuyên ngành GDMN HK1',
-        'Các giảng viên phụ trách môn tiến hành rà soát chuẩn đầu ra (CLO) đối sánh với PLO của CTĐT ngành GDMN, cập nhật tài liệu tham khảo và hình thức đánh giá.',
-        'Chuyên môn GDMN',
-        'high',
-        'in_progress',
-        60,
-        new Date().toISOString().slice(0, 10),
-        new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-        adminUser.id,
-        user2.id,
-        1
-      );
+      for (const t of initialData.tasks || []) {
+        const exists = db.prepare('SELECT id FROM tasks WHERE id = ?').get(t.id);
+        if (!exists) {
+          insertTask.run(
+            t.id, t.title, t.description, t.category, t.priority, t.status, t.progress,
+            t.start_date, t.due_date, t.completed_at, t.assigner_id, t.assignee_id, t.department_id,
+            t.is_personal || 0, t.kpi_score, t.kpi_evaluation, t.kpi_note, t.created_at, t.updated_at
+          );
+        }
+      }
 
-      const insertFollower = db.prepare('INSERT OR IGNORE INTO task_followers (task_id, user_id) VALUES (?, ?)');
-      insertFollower.run(t1.lastInsertRowid, user3.id);
-      if (user4) insertFollower.run(t1.lastInsertRowid, user4.id);
+      const insertFollower = db.prepare(`
+        INSERT OR IGNORE INTO task_followers (id, task_id, user_id, created_at) VALUES (?, ?, ?, ?)
+      `);
+      for (const f of initialData.followers || []) {
+        insertFollower.run(f.id, f.task_id, f.user_id, f.created_at);
+      }
 
-      const t2 = insertTask.run(
-        'Lập kế hoạch phân công hướng dẫn Thực tập Sư phạm tại các trường mầm non liên kết',
-        'Liên hệ với các trường Mầm non thực hành để lên danh sách giảng viên hướng dẫn và lịch đi thực tế rèn nghề của sinh viên khóa K46.',
-        'Rèn NVSP',
-        'urgent',
-        'todo',
-        15,
-        new Date().toISOString().slice(0, 10),
-        new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
-        adminUser.id,
-        user3.id,
-        3
-      );
-      if (user2) insertFollower.run(t2.lastInsertRowid, user2.id);
+      const insertComment = db.prepare(`
+        INSERT OR IGNORE INTO task_comments (id, task_id, user_id, comment, progress_update, created_at) VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const c of initialData.comments || []) {
+        insertComment.run(c.id, c.task_id, c.user_id, c.comment, c.progress_update, c.created_at);
+      }
 
-      insertTask.run(
-        'Tổng hợp minh chứng tự đánh giá CTĐT Mầm non phục vụ kiểm định chất lượng',
-        'Hoàn thiện hồ sơ minh chứng tiêu chuẩn 3 và tiêu chuẩn 5 cho đợt khảo sát chính thức của Trung tâm KĐCLGD.',
-        'Việc cá nhân',
-        'high',
-        'in_progress',
-        40,
-        new Date().toISOString().slice(0, 10),
-        new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-        adminUser.id,
-        adminUser.id,
-        1
-      );
+      const insertAttachment = db.prepare(`
+        INSERT OR IGNORE INTO task_attachments (id, task_id, uploader_id, filename, original_name, file_path, file_size, file_type, is_result_document, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const a of initialData.attachments || []) {
+        insertAttachment.run(a.id, a.task_id, a.uploader_id, a.filename, a.original_name, a.file_path, a.file_size, a.file_type, a.is_result_document, a.created_at);
+      }
+      console.log('[DB] Đã kiểm tra và bảo đảm toàn bộ 20 công việc và dữ liệu mẫu đầy đủ!');
     }
+  } catch (err) {
+    console.error('[DB] Lỗi nạp dữ liệu mẫu công việc:', err.message);
   }
 }
 

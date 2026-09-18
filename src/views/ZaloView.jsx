@@ -21,7 +21,8 @@ import {
   RotateCcw,
   Edit3,
   Save,
-  MessageCircle
+  MessageCircle,
+  Bell
 } from 'lucide-react';
 import { apiRequest, formatVietnamDateTime } from '../api';
 
@@ -43,9 +44,11 @@ export default function ZaloView({ currentUser }) {
   const [guideTab, setGuideTab] = useState('telegram');
 
   // Templates state
-  const [personalTemplate, setPersonalTemplate] = useState('');
+  const [newTaskTemplate, setNewTaskTemplate] = useState('');
+  const [reminderTemplate, setReminderTemplate] = useState('');
+  const [dailyDeadlineTemplate, setDailyDeadlineTemplate] = useState('');
   const [groupTemplate, setGroupTemplate] = useState('');
-  const [templateTab, setTemplateTab] = useState('personal'); // 'personal' | 'group'
+  const [templateTab, setTemplateTab] = useState('new_task'); // 'new_task' | 'reminder' | 'daily_deadline' | 'group'
   const [savingTemplates, setSavingTemplates] = useState(false);
   const [previewGender, setPreviewGender] = useState('female'); // 'female' | 'male'
 
@@ -95,7 +98,9 @@ export default function ZaloView({ currentUser }) {
   const loadTemplates = async () => {
     try {
       const data = await apiRequest('/zalo/templates');
-      setPersonalTemplate(data.personalTemplate || '');
+      setNewTaskTemplate(data.newTaskTemplate || data.personalTemplate || '');
+      setReminderTemplate(data.reminderTemplate || '');
+      setDailyDeadlineTemplate(data.dailyDeadlineTemplate || '');
       setGroupTemplate(data.groupTemplate || '');
     } catch (err) {
       console.error('Lỗi khi tải mẫu tin Zalo:', err);
@@ -314,7 +319,12 @@ export default function ZaloView({ currentUser }) {
     try {
       await apiRequest('/zalo/templates', {
         method: 'POST',
-        body: JSON.stringify({ personalTemplate, groupTemplate })
+        body: JSON.stringify({
+          newTaskTemplate,
+          reminderTemplate,
+          dailyDeadlineTemplate,
+          groupTemplate
+        })
       });
       setMessage('Lưu các mẫu tin nhắn Zalo thành công!');
     } catch (err) {
@@ -325,7 +335,13 @@ export default function ZaloView({ currentUser }) {
   };
 
   const handleResetTemplate = async (type) => {
-    const label = type === 'personal' ? 'Mẫu gửi cá nhân' : 'Mẫu gửi nhóm';
+    const labels = {
+      new_task: 'Mẫu 1: Báo việc mới',
+      reminder: 'Mẫu 2: Nhắc nhở việc',
+      daily_deadline: 'Mẫu 3: Nhắc Deadline hàng ngày',
+      group: 'Mẫu 4: Bản tin nhóm chung'
+    };
+    const label = labels[type] || 'mẫu tin này';
     if (!window.confirm(`Bạn có chắc muốn khôi phục ${label} về định dạng mặc định ban đầu?`)) {
       return;
     }
@@ -334,7 +350,9 @@ export default function ZaloView({ currentUser }) {
         method: 'POST',
         body: JSON.stringify({ type })
       });
-      if (type === 'personal' || type === 'all') setPersonalTemplate(res.personalTemplate);
+      if (type === 'new_task' || type === 'all') setNewTaskTemplate(res.newTaskTemplate || res.personalTemplate);
+      if (type === 'reminder' || type === 'all') setReminderTemplate(res.reminderTemplate);
+      if (type === 'daily_deadline' || type === 'all') setDailyDeadlineTemplate(res.dailyDeadlineTemplate);
       if (type === 'group' || type === 'all') setGroupTemplate(res.groupTemplate);
       setMessage(`Đã khôi phục ${label} về mẫu mặc định!`);
     } catch (err) {
@@ -343,19 +361,38 @@ export default function ZaloView({ currentUser }) {
   };
 
   const handleInsertTag = (tag) => {
-    if (templateTab === 'personal') {
-      setPersonalTemplate(prev => (prev ? prev + ' ' + tag : tag));
+    if (templateTab === 'new_task') {
+      setNewTaskTemplate(prev => (prev ? prev + ' ' + tag : tag));
+    } else if (templateTab === 'reminder') {
+      setReminderTemplate(prev => (prev ? prev + ' ' + tag : tag));
+    } else if (templateTab === 'daily_deadline') {
+      setDailyDeadlineTemplate(prev => (prev ? prev + ' ' + tag : tag));
     } else {
       setGroupTemplate(prev => (prev ? prev + ' ' + tag : tag));
     }
   };
 
-  const getPersonalPreview = (gender = 'female') => {
+  const getNewTaskPreview = (gender = 'female') => {
     const isMale = gender === 'male';
     const honorific = isMale ? 'Thầy' : 'Cô';
     const name = isMale ? 'Nguyễn Công Trường' : 'Huỳnh Thị Thúy Diễm';
-    const sender = currentUser?.full_name || 'Đặng Thị Út Phương';
-    return (personalTemplate || '')
+    const sender = 'Đặng Út Phượng';
+    return (newTaskTemplate || '')
+      .replace(/{danh_xung}/g, honorific)
+      .replace(/{ho_ten}/g, name)
+      .replace(/{nguoi_gui}/g, sender)
+      .replace(/{ten_cong_viec}/g, 'Báo cáo kiểm định chất lượng CTĐT Giáo dục Mầm non')
+      .replace(/{han_chot}/g, '25-09-2026')
+      .replace(/{muc_uu_tien}/g, '🔴 KHẨN CẤP')
+      .replace(/{tien_do}/g, '0');
+  };
+
+  const getReminderPreview = (gender = 'female') => {
+    const isMale = gender === 'male';
+    const honorific = isMale ? 'Thầy' : 'Cô';
+    const name = isMale ? 'Nguyễn Công Trường' : 'Huỳnh Thị Thúy Diễm';
+    const sender = 'Đặng Út Phượng';
+    return (reminderTemplate || '')
       .replace(/{danh_xung}/g, honorific)
       .replace(/{ho_ten}/g, name)
       .replace(/{nguoi_gui}/g, sender)
@@ -363,6 +400,21 @@ export default function ZaloView({ currentUser }) {
       .replace(/{han_chot}/g, '25-09-2026')
       .replace(/{muc_uu_tien}/g, '🔴 KHẨN CẤP')
       .replace(/{tien_do}/g, '45');
+  };
+
+  const getDailyDeadlinePreview = (gender = 'female') => {
+    const isMale = gender === 'male';
+    const honorific = isMale ? 'Thầy' : 'Cô';
+    const name = isMale ? 'Nguyễn Công Trường' : 'Huỳnh Thị Thúy Diễm';
+    const sampleTasks = `📋 Tên công việc: Báo cáo kiểm định chất lượng CTĐT Giáo dục Mầm non [🔴 KHẨN CẤP]`;
+    const today = new Date();
+    const todayStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
+    return (dailyDeadlineTemplate || '')
+      .replace(/{danh_xung}/g, honorific)
+      .replace(/{ho_ten}/g, name)
+      .replace(/{danh_sach_cong_viec}/g, sampleTasks)
+      .replace(/{ten_cong_viec}/g, sampleTasks)
+      .replace(/{han_chot}/g, todayStr);
   };
 
   const getGroupPreview = () => {
@@ -764,22 +816,43 @@ export default function ZaloView({ currentUser }) {
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                               Chế độ 1 (Mặc định & Tự động)
                             </span>
-                            <span className="text-[11px] font-mono font-bold text-emerald-700">07:30 Sáng</span>
+                            <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-emerald-300 shadow-2xs">
+                              <Clock className="w-3 h-3 text-emerald-700" />
+                              <input
+                                type="time"
+                                disabled={!isAdmin}
+                                value={dailyTime}
+                                onChange={(e) => setDailyTime(e.target.value)}
+                                className="bg-transparent font-bold text-xs text-emerald-800 focus:outline-none"
+                                title="Giờ tự động quét và gửi tin hàng ngày (Giờ Việt Nam)"
+                              />
+                            </div>
                           </div>
-                          <h4 className="font-bold text-sm text-slate-800">💬 Nhắc việc riêng 1-1 từng người</h4>
+                          <h4 className="font-bold text-sm text-slate-800">💬 Nhắc Deadline hàng ngày (1-1 riêng từng người)</h4>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            Mỗi sáng lúc 07:30, hệ thống tự động lọc các giảng viên có việc đến hạn hoặc quá hạn và <strong>gửi tin nhắn Zalo riêng (1-1)</strong> vào số điện thoại của từng Thầy/Cô. <em>Không làm phiền nhóm chung</em>.
+                            Mỗi sáng (mặc định 07:30), hệ thống tự động lọc các giảng viên có việc đến hạn hoàn thành hôm đó và <strong>gửi tin nhắn Zalo riêng (1-1)</strong> vào số điện thoại từng người (chỉ ai có việc đến hạn hôm đó mới nhận). <em>Không gửi vào nhóm chung</em>.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerDigest('manual_personal')}
-                          disabled={triggeringPersonal}
-                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50 mt-2"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          {triggeringPersonal ? 'Đang gửi tin nhắn riêng...' : 'Gửi tin nhắn riêng ngay bây giờ (Thủ công)'}
-                        </button>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleSaveSettings}
+                            disabled={saving}
+                            className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl shadow-xs transition"
+                            title="Lưu giờ gửi nhắc tự động hàng ngày"
+                          >
+                            {saving ? 'Đang lưu...' : 'Lưu giờ'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerDigest('manual_personal')}
+                            disabled={triggeringPersonal}
+                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            {triggeringPersonal ? 'Đang gửi...' : 'Gửi thử ngay (Thủ công)'}
+                          </button>
+                        </div>
                       </div>
 
                       {/* MODE 2: Manual Group Announcement */}
@@ -1138,42 +1211,66 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
         </div>
 
         {/* Template Type Tabs */}
-        <div className="flex border border-slate-200 p-1 bg-slate-100/80 rounded-xl w-full sm:w-fit gap-1">
+        <div className="flex flex-wrap border border-slate-200 p-1 bg-slate-100/80 rounded-xl gap-1">
           <button
             type="button"
-            onClick={() => setTemplateTab('personal')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
-              templateTab === 'personal'
-                ? 'bg-white text-blue-700 shadow-sm'
+            onClick={() => setTemplateTab('new_task')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              templateTab === 'new_task'
+                ? 'bg-white text-teal-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <MessageCircle className="w-4 h-4 text-blue-600" />
-            <span>1. Mẫu gửi cá nhân (1-1 riêng)</span>
+            <Bell className="w-3.5 h-3.5 text-teal-600" />
+            <span>1. Báo việc mới</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplateTab('reminder')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              templateTab === 'reminder'
+                ? 'bg-white text-blue-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
+            <span>2. Nhắc nhở việc</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplateTab('daily_deadline')}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
+              templateTab === 'daily_deadline'
+                ? 'bg-white text-emerald-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-600" />
+            <span>3. Nhắc Deadline hàng ngày (07:30)</span>
           </button>
           <button
             type="button"
             onClick={() => setTemplateTab('group')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition ${
               templateTab === 'group'
-                ? 'bg-white text-blue-700 shadow-sm'
+                ? 'bg-white text-indigo-800 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Users className="w-4 h-4 text-teal-600" />
-            <span>2. Mẫu gửi nhóm chung (GDMN)</span>
+            <Users className="w-3.5 h-3.5 text-indigo-600" />
+            <span>4. Bản tin nhóm chung</span>
           </button>
         </div>
 
-        {/* TAB 1: MẪU GỬI CÁ NHÂN */}
-        {templateTab === 'personal' ? (
+        {/* TAB 1: BÁO VIỆC MỚI */}
+        {templateTab === 'new_task' && (
           <div className="space-y-4">
-            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="block font-bold">Cá nhân hóa danh xưng Thầy/Cô tự động:</strong>
+                <strong className="block font-bold">Mẫu tin Báo việc mới:</strong>
                 <span>
-                  Thẻ <code className="font-mono bg-blue-100 px-1 py-0.5 rounded">{'{danh_xung}'}</code> sẽ tự động đổi thành <strong>Thầy</strong> nếu giảng viên có giới tính Nam, hoặc thành <strong>Cô</strong> nếu là Nữ (theo khai báo giới tính trong Danh sách giảng viên).
+                  Được hệ thống tự động gửi ngay sau khi giao việc mới hoặc khi bấm nút "Báo việc mới" (bên trái) ở cột Gửi thông báo. Thẻ <code className="font-mono bg-teal-100 px-1 py-0.5 rounded">{'{danh_xung}'}</code> sẽ tự động đổi thành <strong>Thầy</strong> hoặc <strong>Cô</strong> theo giới tính.
                 </span>
               </div>
             </div>
@@ -1185,11 +1282,97 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { tag: '{danh_xung}', label: 'Danh xưng (Thầy/Cô)' },
-                  { tag: '{ho_ten}', label: 'Họ tên giảng viên' },
-                  { tag: '{nguoi_gui}', label: 'Người gửi / Giao việc' },
-                  { tag: '{ten_cong_viec}', label: 'Tên công việc' },
-                  { tag: '{han_chot}', label: 'Hạn hoàn thành' },
+                  { tag: '{danh_xung}', label: 'Thầy/Cô' },
+                  { tag: '{ho_ten}', label: 'Họ tên nhân sự' },
+                  { tag: '{nguoi_gui}', label: 'Người giao việc' },
+                  { tag: '{ten_cong_viec}', label: 'Tên việc' },
+                  { tag: '{han_chot}', label: 'Hạn chót' },
+                  { tag: '{muc_uu_tien}', label: 'Mức ưu tiên' },
+                ].map(item => (
+                  <button
+                    key={item.tag}
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => handleInsertTag(item.tag)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
+                    title={`Chèn ${item.tag}`}
+                  >
+                    <span className="font-bold text-teal-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Nội dung mẫu Báo việc mới:
+                </label>
+                <textarea
+                  disabled={!isAdmin}
+                  rows={12}
+                  value={newTaskTemplate}
+                  onChange={(e) => setNewTaskTemplate(e.target.value)}
+                  placeholder="Nhập nội dung mẫu tin nhắn báo việc mới..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none leading-relaxed"
+                />
+              </div>
+
+              <div className="space-y-1.5 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Xem trước kết quả hiển thị trên Zalo:
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('female')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'female' ? 'bg-white text-teal-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Cô Diễm (Nữ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('male')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'male' ? 'bg-white text-teal-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Thầy Trường (Nam)
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-800 shadow-inner overflow-y-auto max-h-[300px]">
+                  {getNewTaskPreview(previewGender)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: NHẮC NHỞ VIỆC */}
+        {templateTab === 'reminder' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Mẫu tin Nhắc nhở tiến độ:</strong>
+                <span>
+                  Được dùng khi bấm nút "Nhắc nhở" (bên phải) ở cột Gửi thông báo để nhắc riêng cá nhân phụ trách về công việc đang thực hiện.
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Bấm vào để chèn thẻ dữ liệu vào mẫu tin:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: '{danh_xung}', label: 'Thầy/Cô' },
+                  { tag: '{ho_ten}', label: 'Họ tên nhân sự' },
+                  { tag: '{nguoi_gui}', label: 'Người giao việc' },
+                  { tag: '{ten_cong_viec}', label: 'Tên việc' },
+                  { tag: '{han_chot}', label: 'Hạn chót' },
                   { tag: '{muc_uu_tien}', label: 'Mức ưu tiên' },
                   { tag: '{tien_do}', label: 'Tiến độ (%)' },
                 ].map(item => (
@@ -1208,22 +1391,20 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Textarea */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
-                  Nội dung mẫu tin nhắn cá nhân:
+                  Nội dung mẫu Nhắc nhở tiến độ:
                 </label>
                 <textarea
                   disabled={!isAdmin}
                   rows={12}
-                  value={personalTemplate}
-                  onChange={(e) => setPersonalTemplate(e.target.value)}
-                  placeholder="Nhập nội dung mẫu tin nhắn gửi cá nhân..."
+                  value={reminderTemplate}
+                  onChange={(e) => setReminderTemplate(e.target.value)}
+                  placeholder="Nhập nội dung mẫu tin nhắn nhắc nhở việc..."
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed"
                 />
               </div>
 
-              {/* Live Preview Box */}
               <div className="space-y-1.5 flex flex-col">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -1248,16 +1429,102 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                   </div>
                 </div>
                 <div className="flex-1 bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-800 shadow-inner overflow-y-auto max-h-[300px]">
-                  {getPersonalPreview(previewGender)}
+                  {getReminderPreview(previewGender)}
                 </div>
               </div>
             </div>
           </div>
-        ) : (
-          /* TAB 2: MẪU GỬI NHÓM CHUNG */
+        )}
+
+        {/* TAB 3: NHẮC DEADLINE HÀNG NGÀY (TỰ ĐỘNG) */}
+        {templateTab === 'daily_deadline' && (
           <div className="space-y-4">
-            <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" />
+            <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Mẫu tin Nhắc Deadline hàng ngày (Chế độ tự động):</strong>
+                <span>
+                  Hàng ngày vào lúc {dailyTime || '07:30'}, Zalo tự động gửi tin nhắn mẫu này tới <strong>riêng từng cá nhân</strong> có công việc đến hạn hoàn thành trong ngày hôm đó (chỉ ai có việc đến hạn hôm đó mới nhận). <em>Không gửi vào nhóm chung</em>.
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                Bấm vào để chèn thẻ dữ liệu vào mẫu tin:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { tag: '{danh_xung}', label: 'Thầy/Cô' },
+                  { tag: '{ho_ten}', label: 'Họ tên nhân sự' },
+                  { tag: '{danh_sach_cong_viec}', label: 'Danh sách công việc đến hạn' },
+                  { tag: '{han_chot}', label: 'Hạn hoàn thành (Hôm nay)' },
+                ].map(item => (
+                  <button
+                    key={item.tag}
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => handleInsertTag(item.tag)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
+                    title={`Chèn ${item.tag}`}
+                  >
+                    <span className="font-bold text-emerald-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  Nội dung mẫu Nhắc Deadline hàng ngày:
+                </label>
+                <textarea
+                  disabled={!isAdmin}
+                  rows={12}
+                  value={dailyDeadlineTemplate}
+                  onChange={(e) => setDailyDeadlineTemplate(e.target.value)}
+                  placeholder="Nhập nội dung mẫu tin nhắn nhắc deadline hàng ngày..."
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none leading-relaxed"
+                />
+              </div>
+
+              <div className="space-y-1.5 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Xem trước kết quả hiển thị trên Zalo:
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('female')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'female' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Cô Diễm (Nữ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('male')}
+                      className={`px-2 py-0.5 rounded transition ${previewGender === 'male' ? 'bg-white text-emerald-800 shadow-xs' : 'text-slate-500'}`}
+                    >
+                      Ví dụ: Thầy Trường (Nam)
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 bg-slate-900 text-slate-100 p-4 rounded-xl text-xs font-mono whitespace-pre-wrap leading-relaxed border border-slate-800 shadow-inner overflow-y-auto max-h-[300px]">
+                  {getDailyDeadlinePreview(previewGender)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: MẪU GỬI NHÓM CHUNG */}
+        {templateTab === 'group' && (
+          <div className="space-y-4">
+            <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
               <div>
                 <strong className="block font-bold">Bản tin nhóm ngành GDMN:</strong>
                 <span>
@@ -1284,17 +1551,16 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                     type="button"
                     disabled={!isAdmin}
                     onClick={() => handleInsertTag(item.tag)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 border border-slate-200 rounded-lg text-xs font-mono transition text-slate-700"
                     title={`Chèn ${item.tag}`}
                   >
-                    <span className="font-bold text-teal-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
+                    <span className="font-bold text-indigo-600">+</span> {item.tag} <span className="text-[10px] text-slate-400">({item.label})</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Textarea */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
                   Nội dung mẫu tin nhắn nhóm:
@@ -1305,11 +1571,10 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`}
                   value={groupTemplate}
                   onChange={(e) => setGroupTemplate(e.target.value)}
                   placeholder="Nhập nội dung mẫu tin nhắn gửi nhóm..."
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none leading-relaxed"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
                 />
               </div>
 
-              {/* Live Preview Box */}
               <div className="space-y-1.5 flex flex-col">
                 <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />

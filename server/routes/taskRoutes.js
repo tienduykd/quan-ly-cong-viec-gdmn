@@ -281,8 +281,9 @@ router.post('/', authMiddleware, upload.array('files', 10), (req, res) => {
 
           const prioText = priority === 'urgent' ? '🔴 KHẨN CẤP' : (priority === 'high' ? '🟠 CAO' : (priority === 'low' ? '⚪ THẤP' : '🔵 BÌNH THƯỜNG'));
 
-          // Đọc mẫu tin nhắn cá nhân từ settings
-          const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+          // Đọc mẫu tin nhắn Báo việc mới từ settings
+          const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_new_task')
+            || db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
           const template = (templateRow && templateRow.value && templateRow.value.trim()) ? templateRow.value : `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
 Kính gửi {danh_xung} {ho_ten},
 {danh_xung} có một công việc mới như sau:
@@ -907,10 +908,12 @@ router.post('/:id/evaluate', authMiddleware, (req, res) => {
   res.json({ message: 'Đánh giá nghiệm thu công việc thành công!' });
 });
 
-// POST /api/tasks/:id/remind-zalo - Send a 1-on-1 private Zalo reminder to the assignee
-router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
+// Handler for sending private 1-on-1 Zalo message for a task (either 'new_task' or 'reminder')
+async function handleSendTaskZalo(req, res) {
   try {
     const taskId = parseInt(req.params.id);
+    const type = req.body?.type || 'reminder'; // 'new_task' | 'reminder'
+
     const task = db.prepare(`
       SELECT t.*, u_assigner.full_name as assigner_name
       FROM tasks t
@@ -927,7 +930,7 @@ router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
     const isAssigner = task.assigner_id === user.id;
 
     if (!isAdmin && !isAssigner) {
-      return res.status(403).json({ error: 'Chỉ Người giao việc hoặc Quản trị viên mới có quyền gửi tin nhắn nhắc nhở riêng.' });
+      return res.status(403).json({ error: 'Chỉ Người giao việc hoặc Quản trị viên mới có quyền gửi tin nhắn Zalo cho công việc này.' });
     }
 
     const assignee = db.prepare('SELECT * FROM users WHERE id = ?').get(task.assignee_id);
@@ -940,32 +943,55 @@ router.post('/:id/remind-zalo', authMiddleware, async (req, res) => {
 
     if (!phone) {
       return res.status(400).json({
-        error: `${honorific} ${assignee.full_name} chưa có Số điện thoại trong hồ sơ để gửi tin nhắn Zalo riêng. Vui lòng cập nhật SĐT ở mục Quản lý nhân sự.`
+        error: `${honorific} ${assignee.full_name} chưa có Số điện thoại trong hồ sơ để gửi tin nhắn Zalo riêng. Vui lòng cập nhật SĐT ở mục Quản trị -> Danh sách giảng viên.`
       });
     }
 
     if (zaloPersonalService.status !== 'logged_in') {
       return res.status(400).json({
-        error: 'Tài khoản Zalo của hệ thống chưa được đăng nhập. Quản trị viên vui lòng vào mục Cấu hình Zalo để quét mã QR kết nối.'
+        error: 'Tài khoản Zalo của hệ thống chưa được đăng nhập. Quản trị viên vui lòng vào mục Quản trị -> Cấu hình Zalo để quét mã QR kết nối.'
       });
     }
 
-    const prioText = task.priority === 'urgent' ? '🔴 KHẨN CẤP' : (task.priority === 'high' ? '🟠 Cao' : '🔵 Bình thường');
+    const prioText = task.priority === 'urgent' ? '🔴 KHẨN CẤP' : (task.priority === 'high' ? '🟠 CAO' : (task.priority === 'low' ? '⚪ THẤP' : '🔵 BÌNH THƯỜNG'));
 
-    // Read customizable template from settings
-    const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
-    const template = (templateRow && templateRow.value && templateRow.value.trim()) ? templateRow.value : `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+    let template = '';
+    const isNewTask = (type === 'new_task');
+
+    if (isNewTask) {
+      const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_new_task')
+        || db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+      template = (templateRow && templateRow.value && templateRow.value.trim())
+        ? templateRow.value
+        : `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
 Kính gửi {danh_xung} {ho_ten},
-{nguoi_gui} xin gửi lời nhắc về công việc:
+{danh_xung} có một công việc mới như sau:
+------------------------------------
+Người giao việc: {nguoi_gui}
 📋 Tên công việc: {ten_cong_viec}
 ⏳ Hạn hoàn thành: {han_chot}
 📊 Mức ưu tiên: {muc_uu_tien}
-📈 Tiến độ hiện tại: {tien_do}%
 ------------------------------------
-Kính nhờ {danh_xung} lưu ý bố trí thời gian hoàn thành và cập nhật tiến độ trên hệ thống.
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
 Trân trọng cảm ơn {danh_xung}!`;
+    } else {
+      const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_reminder');
+      template = (templateRow && templateRow.value && templateRow.value.trim())
+        ? templateRow.value
+        : `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+{danh_xung} có công việc cần lưu tâm: 
+------------------------------------
+Người giao việc: {nguoi_gui}
+📋 Tên công việc: {ten_cong_viec}
+⏳ Hạn hoàn thành: {han_chot}
+📊 Mức ưu tiên: {muc_uu_tien}
+------------------------------------
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+    }
 
-    const reminderMsg = template
+    const messageContent = template
       .replace(/{danh_xung}/g, honorific)
       .replace(/{ho_ten}/g, assignee.full_name)
       .replace(/{nguoi_gui}/g, user.full_name)
@@ -974,13 +1000,14 @@ Trân trọng cảm ơn {danh_xung}!`;
       .replace(/{muc_uu_tien}/g, prioText)
       .replace(/{tien_do}/g, (task.progress || 0).toString());
 
-    const sendRes = await zaloPersonalService.sendToPhone(phone, reminderMsg);
+    const sendRes = await zaloPersonalService.sendToPhone(phone, messageContent);
+    const logType = isNewTask ? 'task_new_manual' : 'remind_personal';
 
     if (!sendRes.sent) {
       db.prepare(`
         INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
-        VALUES ('remind_personal', ?, ?, 'failed', ?)
-      `).run(phone, reminderMsg, sendRes.error || sendRes.note || 'Lỗi gửi tin Zalo');
+        VALUES (?, ?, ?, 'failed', ?)
+      `).run(logType, phone, messageContent, sendRes.error || sendRes.note || 'Lỗi gửi tin Zalo');
 
       return res.status(400).json({
         error: sendRes.error || sendRes.note || `Không thể gửi tin tới Zalo của SĐT ${phone}. Vui lòng kiểm tra lại số điện thoại hoặc trạng thái kết nối bạn bè/Zalo.`
@@ -989,28 +1016,36 @@ Trân trọng cảm ơn {danh_xung}!`;
 
     db.prepare(`
       INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
-      VALUES ('remind_personal', ?, ?, 'success', ?)
-    `).run(phone, reminderMsg, JSON.stringify(sendRes));
+      VALUES (?, ?, ?, 'success', ?)
+    `).run(logType, phone, messageContent, JSON.stringify(sendRes));
 
     // Also record an in-app notification for the assignee
+    const notiTitle = isNewTask ? 'Thông báo việc mới qua Zalo' : 'Nhắc nhở tiến độ công việc';
+    const notiBody = isNewTask
+      ? `${user.full_name} đã gửi thông báo việc mới "${task.title}" qua Zalo riêng.`
+      : `${user.full_name} đã gửi lời nhắc nhở tiến độ công việc "${task.title}" qua Zalo riêng.`;
+
     db.prepare(`
       INSERT INTO notifications (user_id, task_id, title, message, type)
       VALUES (?, ?, ?, ?, 'task_reminder')
-    `).run(
-      assignee.id,
-      task.id,
-      'Nhắc nhở tiến độ công việc',
-      `${user.full_name} đã gửi lời nhắc nhở tiến độ công việc "${task.title}" qua Zalo riêng.`
-    );
+    `).run(assignee.id, task.id, notiTitle, notiBody);
+
+    const successMsg = isNewTask
+      ? `Đã gửi thông báo việc mới tới Zalo của ${honorific} ${assignee.full_name} (${phone}) thành công!`
+      : `Đã gửi tin nhắn nhắc nhở tới Zalo của ${honorific} ${assignee.full_name} (${phone}) thành công!`;
 
     return res.json({
       success: true,
-      message: `Đã gửi tin nhắn nhắc nhở trực tiếp tới Zalo của ${honorific} ${assignee.full_name} (${phone}) thành công!`
+      message: successMsg
     });
   } catch (err) {
-    console.error('[REMIND-ZALO-ERROR]', err);
+    console.error('[SEND-TASK-ZALO-ERROR]', err);
     return res.status(500).json({ error: 'Đã xảy ra lỗi khi gửi tin nhắn Zalo: ' + err.message });
   }
-});
+}
+
+// POST /api/tasks/:id/send-zalo & /api/tasks/:id/remind-zalo
+router.post('/:id/send-zalo', authMiddleware, handleSendTaskZalo);
+router.post('/:id/remind-zalo', authMiddleware, handleSendTaskZalo);
 
 module.exports = router;

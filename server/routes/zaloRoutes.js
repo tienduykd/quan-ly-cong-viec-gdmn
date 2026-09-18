@@ -84,7 +84,7 @@ router.post('/test-message', authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-const DEFAULT_PERSONAL_TEMPLATE = `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
+const DEFAULT_NEW_TASK_TEMPLATE = `🔔 [THÔNG BÁO VIỆC MỚI - NGÀNH GDMN]
 Kính gửi {danh_xung} {ho_ten},
 {danh_xung} có một công việc mới như sau:
 ------------------------------------
@@ -92,6 +92,28 @@ Người giao việc: {nguoi_gui}
 📋 Tên công việc: {ten_cong_viec}
 ⏳ Hạn hoàn thành: {han_chot}
 📊 Mức ưu tiên: {muc_uu_tien}
+------------------------------------
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+
+const DEFAULT_REMINDER_TEMPLATE = `🔔 [NHẮC NHỞ TIẾN ĐỘ CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+{danh_xung} có công việc cần lưu tâm:
+------------------------------------
+Người giao việc: {nguoi_gui}
+📋 Tên công việc: {ten_cong_viec}
+⏳ Hạn hoàn thành: {han_chot}
+📊 Mức ưu tiên: {muc_uu_tien}
+------------------------------------
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+
+const DEFAULT_DAILY_DEADLINE_TEMPLATE = `🔔 [NHẮC NHỞ DEADLINE CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+Hôm nay {danh_xung} có các công việc đến Deadline, nhờ {danh_xung} lưu tâm:
+------------------------------------
+{danh_sach_cong_viec}
+⏳ Hạn hoàn thành: Hôm nay {han_chot}
 ------------------------------------
 Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
 Trân trọng cảm ơn {danh_xung}!`;
@@ -110,51 +132,84 @@ Chúc Quý Thầy/Cô một ngày làm việc hiệu quả!`;
 
 // GET /api/zalo/templates - Get current message templates
 router.get('/templates', authMiddleware, (req, res) => {
-  const personalRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+  const newTaskRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_new_task')
+    || db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_personal');
+  const reminderRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_reminder');
+  const dailyDeadlineRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_daily_deadline');
   const groupRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_group');
 
   res.json({
-    personalTemplate: personalRow && personalRow.value ? personalRow.value : DEFAULT_PERSONAL_TEMPLATE,
+    newTaskTemplate: newTaskRow && newTaskRow.value ? newTaskRow.value : DEFAULT_NEW_TASK_TEMPLATE,
+    reminderTemplate: reminderRow && reminderRow.value ? reminderRow.value : DEFAULT_REMINDER_TEMPLATE,
+    dailyDeadlineTemplate: dailyDeadlineRow && dailyDeadlineRow.value ? dailyDeadlineRow.value : DEFAULT_DAILY_DEADLINE_TEMPLATE,
     groupTemplate: groupRow && groupRow.value ? groupRow.value : DEFAULT_GROUP_TEMPLATE,
-    defaultPersonalTemplate: DEFAULT_PERSONAL_TEMPLATE,
-    defaultGroupTemplate: DEFAULT_GROUP_TEMPLATE
+    // Backward compatibility
+    personalTemplate: newTaskRow && newTaskRow.value ? newTaskRow.value : DEFAULT_NEW_TASK_TEMPLATE,
+    defaults: {
+      newTask: DEFAULT_NEW_TASK_TEMPLATE,
+      reminder: DEFAULT_REMINDER_TEMPLATE,
+      dailyDeadline: DEFAULT_DAILY_DEADLINE_TEMPLATE,
+      group: DEFAULT_GROUP_TEMPLATE
+    }
   });
 });
 
 // POST /api/zalo/templates - Admin updates templates
 router.post('/templates', authMiddleware, adminOnly, (req, res) => {
-  const { personalTemplate, groupTemplate } = req.body;
+  const { newTaskTemplate, reminderTemplate, dailyDeadlineTemplate, groupTemplate, personalTemplate } = req.body;
 
   const updateSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, description) VALUES (?, ?, ?)');
-  if (personalTemplate !== undefined) {
-    updateSetting.run('zalo_template_personal', personalTemplate.trim(), 'Mẫu tin nhắn Zalo gửi cá nhân (1-1)');
-  }
-  if (groupTemplate !== undefined) {
-    updateSetting.run('zalo_template_group', groupTemplate.trim(), 'Mẫu tin nhắn Zalo gửi nhóm chung');
+  if (newTaskTemplate !== undefined) {
+    updateSetting.run('zalo_template_new_task', newTaskTemplate.trim(), 'Mẫu tin Zalo: Báo việc mới');
+    updateSetting.run('zalo_template_personal', newTaskTemplate.trim(), 'Mẫu tin Zalo: Báo việc mới');
+  } else if (personalTemplate !== undefined) {
+    updateSetting.run('zalo_template_new_task', personalTemplate.trim(), 'Mẫu tin Zalo: Báo việc mới');
+    updateSetting.run('zalo_template_personal', personalTemplate.trim(), 'Mẫu tin Zalo: Báo việc mới');
   }
 
-  res.json({ message: 'Lưu mẫu tin nhắn Zalo thành công!' });
+  if (reminderTemplate !== undefined) {
+    updateSetting.run('zalo_template_reminder', reminderTemplate.trim(), 'Mẫu tin Zalo: Nhắc nhở tiến độ');
+  }
+  if (dailyDeadlineTemplate !== undefined) {
+    updateSetting.run('zalo_template_daily_deadline', dailyDeadlineTemplate.trim(), 'Mẫu tin Zalo: Nhắc deadline hàng ngày');
+  }
+  if (groupTemplate !== undefined) {
+    updateSetting.run('zalo_template_group', groupTemplate.trim(), 'Mẫu tin Zalo gửi nhóm chung');
+  }
+
+  res.json({ message: 'Lưu các mẫu tin nhắn Zalo thành công!' });
 });
 
 // POST /api/zalo/templates/reset - Reset template to default
 router.post('/templates/reset', authMiddleware, adminOnly, (req, res) => {
-  const { type } = req.body; // 'personal' | 'group' | 'all'
+  const { type } = req.body; // 'new_task' | 'reminder' | 'daily_deadline' | 'group' | 'all'
   const updateSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, description) VALUES (?, ?, ?)');
 
-  if (type === 'personal' || type === 'all') {
-    updateSetting.run('zalo_template_personal', DEFAULT_PERSONAL_TEMPLATE, 'Mẫu tin nhắn Zalo gửi cá nhân (1-1)');
+  if (type === 'new_task' || type === 'all' || type === 'personal') {
+    updateSetting.run('zalo_template_new_task', DEFAULT_NEW_TASK_TEMPLATE, 'Mẫu tin Zalo: Báo việc mới');
+    updateSetting.run('zalo_template_personal', DEFAULT_NEW_TASK_TEMPLATE, 'Mẫu tin Zalo: Báo việc mới');
+  }
+  if (type === 'reminder' || type === 'all') {
+    updateSetting.run('zalo_template_reminder', DEFAULT_REMINDER_TEMPLATE, 'Mẫu tin Zalo: Nhắc nhở tiến độ');
+  }
+  if (type === 'daily_deadline' || type === 'all') {
+    updateSetting.run('zalo_template_daily_deadline', DEFAULT_DAILY_DEADLINE_TEMPLATE, 'Mẫu tin Zalo: Nhắc deadline hàng ngày');
   }
   if (type === 'group' || type === 'all') {
-    updateSetting.run('zalo_template_group', DEFAULT_GROUP_TEMPLATE, 'Mẫu tin nhắn Zalo gửi nhóm chung');
+    updateSetting.run('zalo_template_group', DEFAULT_GROUP_TEMPLATE, 'Mẫu tin Zalo gửi nhóm chung');
   }
 
   res.json({
     message: 'Khôi phục mẫu tin mặc định thành công!',
-    personalTemplate: DEFAULT_PERSONAL_TEMPLATE,
+    newTaskTemplate: DEFAULT_NEW_TASK_TEMPLATE,
+    reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
+    dailyDeadlineTemplate: DEFAULT_DAILY_DEADLINE_TEMPLATE,
     groupTemplate: DEFAULT_GROUP_TEMPLATE
   });
 });
 
 module.exports = router;
-module.exports.DEFAULT_PERSONAL_TEMPLATE = DEFAULT_PERSONAL_TEMPLATE;
+module.exports.DEFAULT_NEW_TASK_TEMPLATE = DEFAULT_NEW_TASK_TEMPLATE;
+module.exports.DEFAULT_REMINDER_TEMPLATE = DEFAULT_REMINDER_TEMPLATE;
+module.exports.DEFAULT_DAILY_DEADLINE_TEMPLATE = DEFAULT_DAILY_DEADLINE_TEMPLATE;
 module.exports.DEFAULT_GROUP_TEMPLATE = DEFAULT_GROUP_TEMPLATE;

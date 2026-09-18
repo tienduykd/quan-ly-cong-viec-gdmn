@@ -21,7 +21,8 @@ import {
   X,
   RotateCcw,
   UserCheck,
-  Send
+  Send,
+  Bell
 } from 'lucide-react';
 import { apiRequest, formatDateDMY } from '../api';
 
@@ -179,7 +180,7 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
   const [assigneeFilter, setAssigneeFilter] = useState('all');
   const [usersList, setUsersList] = useState([]);
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
-  const [remindingTaskId, setRemindingTaskId] = useState(null);
+  const [sendingZaloAction, setSendingZaloAction] = useState(null); // { id: number, type: 'new_task' | 'reminder' }
 
   const isAdmin = user.role === 'admin' || user.username === 'dangutphuong';
 
@@ -190,26 +191,35 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
       .catch(err => console.error('Lỗi khi tải danh sách nhân sự:', err));
   }, []);
 
-  const handleQuickRemindZalo = async (task, e) => {
-    e.stopPropagation();
-    const canRemind = isAdmin || task.assigner_id === user.id;
-    if (!canRemind) {
-      alert('Chỉ Người giao việc hoặc Quản trị viên mới có thể gửi tin nhắn Zalo nhắc nhở cho công việc này.');
+  const handleSendTaskZalo = async (task, type = 'reminder', e) => {
+    if (e) e.stopPropagation();
+    const canSend = isAdmin || task.assigner_id === user.id;
+    if (!canSend) {
+      alert('Chỉ Người giao việc hoặc Quản trị viên mới có thể gửi tin nhắn Zalo cho công việc này.');
       return;
     }
 
-    if (!window.confirm(`Gửi tin nhắn Zalo riêng nhắc việc trực tiếp cho ${task.assignee_name} về công việc:\n"${task.title}"?`)) {
+    const isNew = type === 'new_task';
+    const actionLabel = isNew ? 'Báo việc mới' : 'Nhắc nhở tiến độ';
+    const confirmMsg = isNew
+      ? `Gửi tin nhắn Zalo riêng [BÁO VIỆC MỚI] tới ${task.assignee_name} về công việc:\n"${task.title}"?`
+      : `Gửi tin nhắn Zalo riêng [NHẮC NHỞ TIẾN ĐỘ] tới ${task.assignee_name} về công việc:\n"${task.title}"?`;
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
-    setRemindingTaskId(task.id);
+    setSendingZaloAction({ id: task.id, type });
     try {
-      const res = await apiRequest(`/tasks/${task.id}/remind-zalo`, { method: 'POST' });
-      alert(res.message || 'Đã gửi tin nhắn nhắc nhở qua Zalo thành công!');
+      const res = await apiRequest(`/tasks/${task.id}/send-zalo`, {
+        method: 'POST',
+        body: JSON.stringify({ type })
+      });
+      alert(res.message || `Đã gửi tin nhắn ${actionLabel} qua Zalo thành công!`);
     } catch (err) {
-      alert('Lỗi gửi tin Zalo: ' + err.message);
+      alert(`Lỗi gửi tin Zalo (${actionLabel}): ` + err.message);
     } finally {
-      setRemindingTaskId(null);
+      setSendingZaloAction(null);
     }
   };
 
@@ -537,7 +547,7 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                   <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Tiến độ</th>
                   <th className="py-3 px-2 w-28 text-center bg-slate-100 whitespace-nowrap">Trạng thái</th>
                   <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Ưu tiên</th>
-                  <th className="py-3 px-2 w-24 text-center bg-slate-100 whitespace-nowrap">Gửi thông báo</th>
+                  <th className="py-3 px-2 min-w-[210px] text-center bg-slate-100 whitespace-nowrap">Gửi thông báo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -625,16 +635,39 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                         {getPriorityBadge(t.priority)}
                       </td>
                       <td className="py-3 px-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => handleQuickRemindZalo(t, e)}
-                          disabled={remindingTaskId === t.id}
-                          title={`Gửi tin nhắn Zalo riêng nhắc việc cho ${t.assignee_name}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-xs transition disabled:opacity-50"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
-                          <span>{remindingTaskId === t.id ? 'Đang gửi...' : 'Nhắc Zalo'}</span>
-                        </button>
+                        <div className="inline-flex items-center justify-center gap-1.5">
+                          {/* Nút 1 (Bên trái): Báo việc mới */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleSendTaskZalo(t, 'new_task', e)}
+                            disabled={sendingZaloAction?.id === t.id}
+                            title={`Gửi tin Zalo Báo việc mới cho ${t.assignee_name}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 shadow-2xs transition disabled:opacity-50"
+                          >
+                            <Bell className="w-3.5 h-3.5 text-teal-600" />
+                            <span>
+                              {sendingZaloAction?.id === t.id && sendingZaloAction?.type === 'new_task'
+                                ? 'Đang gửi...'
+                                : 'Báo việc mới'}
+                            </span>
+                          </button>
+
+                          {/* Nút 2 (Bên phải): Nhắc nhở */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleSendTaskZalo(t, 'reminder', e)}
+                            disabled={sendingZaloAction?.id === t.id}
+                            title={`Gửi tin Zalo Nhắc nhở tiến độ cho ${t.assignee_name}`}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 shadow-2xs transition disabled:opacity-50"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5 text-blue-600" />
+                            <span>
+                              {sendingZaloAction?.id === t.id && sendingZaloAction?.type === 'reminder'
+                                ? 'Đang gửi...'
+                                : 'Nhắc nhở'}
+                            </span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -706,19 +739,31 @@ export default function TasksView({ user, onSelectTask, onOpenCreateTask, initia
                     </div>
                   </div>
 
-                  {/* Zalo Reminder Button */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                    <span className="text-[11px] text-slate-400">Thông báo:</span>
-                    <button
-                      type="button"
-                      onClick={(e) => handleQuickRemindZalo(t, e)}
-                      disabled={remindingTaskId === t.id}
-                      title={`Gửi tin nhắn Zalo riêng nhắc việc cho ${t.assignee_name}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition disabled:opacity-50"
-                    >
-                      <MessageCircle className="w-3 h-3 text-blue-600" />
-                      <span>{remindingTaskId === t.id ? 'Đang gửi...' : 'Nhắc Zalo'}</span>
-                    </button>
+                  {/* Zalo Reminder Buttons */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-[11px] font-semibold text-slate-500">Gửi Zalo:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSendTaskZalo(t, 'new_task', e)}
+                        disabled={sendingZaloAction?.id === t.id}
+                        title={`Gửi tin Zalo Báo việc mới cho ${t.assignee_name}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition disabled:opacity-50"
+                      >
+                        <Bell className="w-3 h-3 text-teal-600" />
+                        <span>{sendingZaloAction?.id === t.id && sendingZaloAction?.type === 'new_task' ? 'Đang gửi...' : 'Báo việc mới'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleSendTaskZalo(t, 'reminder', e)}
+                        disabled={sendingZaloAction?.id === t.id}
+                        title={`Gửi tin Zalo Nhắc nhở tiến độ cho ${t.assignee_name}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition disabled:opacity-50"
+                      >
+                        <MessageCircle className="w-3 h-3 text-blue-600" />
+                        <span>{sendingZaloAction?.id === t.id && sendingZaloAction?.type === 'reminder' ? 'Đang gửi...' : 'Nhắc nhở'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

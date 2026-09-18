@@ -58,7 +58,7 @@ async function sendDailyDigest(triggerType = 'cron') {
     let zaloResult = { sent: false, note: '' };
 
     // =========================================================================
-    // CHẾ ĐỘ 1 (MẶC ĐỊNH & TỰ ĐỘNG 07:30 SÁNG): Gửi tin nhắn riêng 1-1 cho người có việc
+    // CHẾ ĐỘ 1: Gửi tin nhắn riêng 1-1 cho các cá nhân có DEADLINE HÔM NAY
     // =========================================================================
     if (triggerType === 'cron' || triggerType === 'manual_personal' || triggerType === 'all') {
       const activeTasks = db.prepare(`
@@ -67,9 +67,9 @@ async function sendDailyDigest(triggerType = 'cron') {
                u.phone as assignee_phone, u.zalo_phone as assignee_zalo
         FROM tasks t
         JOIN users u ON t.assignee_id = u.id
-        WHERE (t.due_date = ? OR t.due_date < ?) AND t.status != 'completed' AND t.status != 'cancelled'
-        ORDER BY t.priority DESC, t.due_date ASC
-      `).all(today, today);
+        WHERE t.due_date = ? AND t.status != 'completed' AND t.status != 'cancelled'
+        ORDER BY t.priority DESC, t.id ASC
+      `).all(today);
 
       const tasksByUser = {};
       for (const t of activeTasks) {
@@ -81,52 +81,67 @@ async function sendDailyDigest(triggerType = 'cron') {
               gender: t.assignee_gender,
               phone: t.assignee_zalo || t.assignee_phone
             },
-            dueToday: [],
-            overdue: []
+            tasks: []
           };
         }
-        if (t.due_date === today) {
-          tasksByUser[t.assignee_id].dueToday.push(t);
-        } else {
-          tasksByUser[t.assignee_id].overdue.push(t);
-        }
+        tasksByUser[t.assignee_id].tasks.push(t);
       }
 
       let personalSentCount = 0;
       if (zaloPersonalService.status === 'logged_in' && zaloPersonalService.enabled) {
+        const templateRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('zalo_template_daily_deadline');
+        const template = (templateRow && templateRow.value && templateRow.value.trim())
+          ? templateRow.value
+          : `🔔 [NHẮC NHỞ DEADLINE CÔNG VIỆC - NGÀNH GDMN]
+Kính gửi {danh_xung} {ho_ten},
+Hôm nay {danh_xung} có các công việc đến Deadline, nhờ {danh_xung} lưu tâm:
+------------------------------------
+{danh_sach_cong_viec}
+⏳ Hạn hoàn thành: Hôm nay {han_chot}
+------------------------------------
+Kính nhờ {danh_xung} lưu ý bố trí thời gian thực hiện công việc và cập nhật tiến độ trên hệ thống.
+Trân trọng cảm ơn {danh_xung}!`;
+
         for (const item of Object.values(tasksByUser)) {
-          const { user, dueToday, overdue } = item;
+          const { user, tasks } = item;
           const targetPhone = user.phone ? user.phone.trim() : null;
           if (!targetPhone) continue; // Only send if phone exists
 
           const honorific = getHonorific(user.gender);
-          let personalMsg = `⏰ [NHẮC VIỆC HÔM NAY - NGÀNH GDMN]\n`;
-          personalMsg += `Kính gửi ${honorific} ${user.full_name},\n`;
-          personalMsg += `Sáng nay (${formatDateDMY(today)}), ${honorific} có công việc cần hoàn thành/theo dõi:\n`;
-          personalMsg += `------------------------------------\n`;
 
-          if (dueToday.length > 0) {
-            personalMsg += `📌 CÔNG VIỆC ĐẾN HẠN HÔM NAY (${dueToday.length}):\n`;
-            dueToday.forEach((t, i) => {
-              const prio = t.priority === 'urgent' ? '🔴 KHẨN' : (t.priority === 'high' ? '🟠 Cao' : '🔵 Thường');
-              personalMsg += `${i + 1}. [${prio}] ${t.title} (Tiến độ: ${t.progress}%)\n`;
-            });
+          let taskListStr = '';
+          if (tasks.length === 1) {
+            const prio = tasks[0].priority === 'urgent' ? ' [🔴 KHẨN CẤP]' : (tasks[0].priority === 'high' ? ' [🟠 CAO]' : '');
+            taskListStr = `📋 Tên công việc: ${tasks[0].title}${prio}`;
+          } else {
+            taskListStr = `📋 Danh sách công việc (${tasks.length} việc):\n` +
+              tasks.map((t, idx) => {
+                const prio = t.priority === 'urgent' ? ' [🔴 KHẨN CẤP]' : (t.priority === 'high' ? ' [🟠 CAO]' : '');
+                return `  ${idx + 1}. ${t.title}${prio} (Tiến độ: ${t.progress}%)`;
+              }).join('\n');
           }
 
-          if (overdue.length > 0) {
-            personalMsg += `⚠️ CÔNG VIỆC ĐÃ QUÁ HẠN (${overdue.length}):\n`;
-            overdue.forEach((t, i) => {
-              personalMsg += `${i + 1}. ❗ ${t.title} (Hạn chót: ${formatDateDMY(t.due_date)} | Tiến độ: ${t.progress}%)\n`;
-            });
-          }
-
-          personalMsg += `------------------------------------\n`;
-          personalMsg += `${honorific} vui lòng truy cập hệ thống để cập nhật tiến độ nhé.\n`;
-          personalMsg += `Kính chúc ${honorific} một ngày làm việc thuận lợi và hiệu quả!`;
+          const personalMsg = template
+            .replace(/{danh_xung}/g, honorific)
+            .replace(/{ho_ten}/g, user.full_name)
+            .replace(/{danh_sach_cong_viec}/g, taskListStr)
+            .replace(/{ten_cong_viec}/g, taskListStr)
+            .replace(/{han_chot}/g, formatDateDMY(today));
 
           try {
             const sendRes = await zaloPersonalService.sendToPhone(targetPhone, personalMsg);
-            if (sendRes.sent) personalSentCount++;
+            if (sendRes.sent) {
+              personalSentCount++;
+              db.prepare(`
+                INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+                VALUES ('daily_deadline_personal', ?, ?, 'success', ?)
+              `).run(targetPhone, personalMsg, JSON.stringify(sendRes));
+            } else {
+              db.prepare(`
+                INSERT INTO zalo_logs (message_type, recipient, content, status, response_data)
+                VALUES ('daily_deadline_personal', ?, ?, 'failed', ?)
+              `).run(targetPhone, personalMsg, sendRes.error || sendRes.note || 'Lỗi gửi tin Zalo');
+            }
           } catch (e) {
             console.warn(`[CRON-DIGEST] Lỗi gửi riêng tới SĐT ${targetPhone}:`, e.message);
           }
@@ -136,7 +151,7 @@ async function sendDailyDigest(triggerType = 'cron') {
       zaloResult = {
         sent: personalSentCount > 0,
         personalSentCount,
-        note: `Đã gửi tin nhắn nhắc việc riêng tới ${personalSentCount} giảng viên có việc hôm nay.`
+        note: `Đã gửi tin nhắn nhắc deadline hôm nay tới ${personalSentCount} cá nhân có việc đến hạn.`
       };
     }
 
@@ -313,15 +328,34 @@ async function notifyTaskEvent(taskId, eventTitle, actorName, detail) {
   }
 }
 
-// Setup node-cron scheduler at 07:30 AM every day
+let lastSentDailyDigestDate = '';
+
+// Setup cron scheduler checking against Vietnam time (Asia/Ho_Chi_Minh) and configured daily_reminder_time
 function startCronJobs() {
-  // Run at 07:30 every day: 30 7 * * *
-  cron.schedule('30 7 * * *', () => {
-    console.log('[CRON] Đang quét lịch nhắc việc 07:30 sáng...');
-    sendDailyDigest('cron');
+  cron.schedule('* * * * *', () => {
+    try {
+      const nowVN = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+      const currentHours = String(nowVN.getHours()).padStart(2, '0');
+      const currentMinutes = String(nowVN.getMinutes()).padStart(2, '0');
+      const currentTimeStr = `${currentHours}:${currentMinutes}`;
+      const currentDateStr = nowVN.toISOString().slice(0, 10);
+
+      const reminderTimeRow = db.prepare("SELECT value FROM settings WHERE key = 'daily_reminder_time'").get();
+      const targetTimeStr = (reminderTimeRow && reminderTimeRow.value && reminderTimeRow.value.trim())
+        ? reminderTimeRow.value.trim()
+        : '07:30';
+
+      if (currentTimeStr === targetTimeStr && lastSentDailyDigestDate !== currentDateStr) {
+        lastSentDailyDigestDate = currentDateStr;
+        console.log(`[CRON] Đang kích hoạt nhắc việc tự động hàng ngày lúc ${currentTimeStr} (Việt Nam)...`);
+        sendDailyDigest('cron');
+      }
+    } catch (err) {
+      console.error('[CRON] Lỗi kiểm tra lịch chạy:', err);
+    }
   });
 
-  console.log('[CRON] Bộ lập lịch nhắc việc tự động 07:30 sáng đã sẵn sàng.');
+  console.log('[CRON] Bộ lập lịch nhắc việc tự động theo giờ Việt Nam đã sẵn sàng (quét mỗi phút).');
 }
 
 module.exports = {
